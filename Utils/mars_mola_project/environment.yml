@@ -1,0 +1,11 @@
+name: mola-visualization
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - matplotlib
+  - pillow
+  - numpy
+  - jupyter
+  - pip
