@@ -28,20 +28,26 @@ namespace GravitationalWaveVisualizer
         private double _elapsedTime = 0.0;     // Прошедшее время с начала отсчёта
         private double _fps = 0.0;             // Текущее значение FPS
 
+        Minimap minimap;
+
         public HeightmapGame()
             : base(new GameWindowSettings() { UpdateFrequency = 60.0 },
                   new NativeWindowSettings() { IsEventDriven = true })
         {
             MolaDataReader reader = new MolaDataReader();
-            var parameters = reader.ReadLblFile(@"d:\Dev\_Graphics\Mars\meg128\megt44n180hb.lbl");
+            var parameters = reader.ReadLblFile(@"d:\Dev\_Graphics\Mars\data\mola\meg128\megt44n180hb.lbl");
 
-            mapData = reader.ReadImgFile(@"d:\Dev\_Graphics\Mars\meg128\megt44n180hb.img", parameters, 8);
+            mapData = reader.ReadImgFile(@"d:\Dev\_Graphics\Mars\data\mola\meg128\megt44n180hb.img", parameters, 8);
         }
 
 
         protected override void OnLoad()
         {
             base.OnLoad();
+
+            minimap = new Minimap("Mars_topography_(MOLA_dataset)_HiRes_2.jpg", Size.X, Size.Y);
+            minimap.Toggle();
+
             //Position: (-142, 66658; 103,019356; 204,69543)       Orientation: (1, 5987905; -0,2156; 0)
             //cam.Position = new Vector3(25, 0, 200);
             //cam.Orientation = new Vector3((float)Math.PI, 0.694f, -0.14f);
@@ -96,9 +102,14 @@ namespace GravitationalWaveVisualizer
             base.OnMouseDown(e);
 
             mouseDown = true;
-
             lastMousePos = new Vector2(MouseState.X, MouseState.Y);
+
+            if (e.Button == MouseButton.Left)
+            {
+                minimap.HandleMouseDown((int)MouseState.X, (int)MouseState.Y);
+            }
         }
+
         protected override void OnMouseUp(MouseButtonEventArgs e)
         {
             base.OnMouseUp(e);
@@ -194,6 +205,8 @@ namespace GravitationalWaveVisualizer
             meshRender.DrawMesh(view, projection, Matrix4.Identity, cam.Position, frustum);
 
             boundingBoxRenderer.DrawBoundingBox(view, projection);
+
+            minimap.Render((float)args.Time);
 
             SwapBuffers();
         }
