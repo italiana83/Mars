@@ -102,6 +102,15 @@ namespace Mars
             GL.Uniform3(location, value);
         }
 
+        public void SetVector4(string name, Vector4 value)
+        {
+            int location = GL.GetUniformLocation(_handle, name);
+            if (location == -1)
+                throw new Exception($"Не удалось найти uniform-переменную с именем {name}");
+
+            GL.Uniform4(location, value);
+        }
+
         public void SetArray1(string name, float[] array)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -118,6 +127,15 @@ namespace Mars
                 throw new Exception($"Не удалось найти uniform-переменную с именем {name}");
 
             GL.Uniform3(location, array.Length / 3, array);
+        }
+
+        public void SetInt(string name, int value)
+        {
+            int location = GL.GetUniformLocation(_handle, name);
+            if (location == -1)
+                throw new Exception($"Не удалось найти uniform-переменную с именем {name}");
+
+            GL.Uniform1(location, value);
         }
 
         public void SetFloat(string name, float value)

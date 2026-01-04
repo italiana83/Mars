@@ -31,8 +31,16 @@ namespace GravitationalWaveVisualizer
         Minimap minimap;
 
         public HeightmapGame()
-            : base(new GameWindowSettings() { UpdateFrequency = 60.0 },
-                  new NativeWindowSettings() { IsEventDriven = true })
+            : base(
+        new GameWindowSettings { UpdateFrequency = 60.0 },
+            new NativeWindowSettings
+            {
+                IsEventDriven = true,
+                APIVersion = new Version(3, 3),
+                Profile = ContextProfile.Core,
+                NumberOfSamples = 0,
+                AlphaBits = 8   // 🔥 КЛЮЧЕВАЯ СТРОКА
+            })
         {
             MolaDataReader reader = new MolaDataReader();
             var parameters = reader.ReadLblFile(@"d:\Dev\_Graphics\Mars\data\mola\meg128\megt44n180hb.lbl");
@@ -46,7 +54,7 @@ namespace GravitationalWaveVisualizer
             base.OnLoad();
 
             minimap = new Minimap("Mars_topography_(MOLA_dataset)_HiRes_2.jpg", Size.X, Size.Y);
-            minimap.Toggle();
+            //minimap.Toggle();
 
             //Position: (-142, 66658; 103,019356; 204,69543)       Orientation: (1, 5987905; -0,2156; 0)
             //cam.Position = new Vector3(25, 0, 200);
@@ -57,8 +65,8 @@ namespace GravitationalWaveVisualizer
             GL.Enable(EnableCap.DepthTest);
 
             // Включаем режим каркаса
-            GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-            //GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+            //GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
+            GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
             GL.ClearDepth(1.0f);	  									// Depth Buffer Setup
             GL.DepthFunc(DepthFunction.Lequal);
             GL.Enable(EnableCap.DepthTest);                                 // Enable Depth Testing
@@ -89,12 +97,6 @@ namespace GravitationalWaveVisualizer
             Console.WriteLine($"MinZ: {meshRender.MinZ}, MaxZ: {meshRender.MaxZ}");
 
             axisRender = new AxisRender(100.0f, 2.5f, 10.0f, meshRender.ModelCenter);
-
-            projection = Matrix4.CreatePerspectiveFieldOfView(
-                MathHelper.DegreesToRadians(45.0f),
-                Size.X / (float)Size.Y,
-                0.1f,
-                90000.0f);
         }
 
         protected override void OnMouseDown(MouseButtonEventArgs e)
@@ -106,7 +108,7 @@ namespace GravitationalWaveVisualizer
 
             if (e.Button == MouseButton.Left)
             {
-                minimap.HandleMouseDown((int)MouseState.X, (int)MouseState.Y);
+                minimap.HandleMouseDown(MouseState.X, MouseState.Y);
             }
         }
 
@@ -214,6 +216,15 @@ namespace GravitationalWaveVisualizer
         protected override void OnResize(ResizeEventArgs e)
         {
             base.OnResize(e);
+
+            // Обновляем проекцию для миникарты
+            minimap.UpdateScreenSize(Size.X, Size.Y);
+
+            projection = Matrix4.CreatePerspectiveFieldOfView(
+                MathHelper.DegreesToRadians(45.0f),
+                Size.X / (float)Size.Y,
+                0.1f,
+                90000.0f);
 
             GL.Viewport(0, 0, Size.X, Size.Y);
         }
