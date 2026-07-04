@@ -1,5 +1,13 @@
 {
-    "debug.javascript.defaultRuntimeExecutable": {
-        "pwa-node": "node"
-    }
+    "files.exclude": {
+        "**/bin": true,
+        "**/obj": true
+    },
+
+    "search.exclude": {
+        "**/bin": true,
+        "**/obj": true
+    },
+
+    "editor.formatOnSave": true
 }

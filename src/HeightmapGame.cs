@@ -1,232 +1,209 @@
-﻿using System;
-using OpenTK.Windowing.Common;
+﻿using OpenTK.Windowing.Common;
 using OpenTK.Windowing.Desktop;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
-using Mars;
 using OpenTK.Windowing.GraphicsLibraryFramework;
-using System.Drawing;
 
-namespace GravitationalWaveVisualizer
+namespace Mars;
+
+public class HeightmapGame : GameWindow
 {
-    public class HeightmapGame : GameWindow
-    {
-        private MapData mapData;
+    private MapData mapData;
 
-        //TextRenderer textRenderer;
-        BoundingBoxRenderer boundingBoxRenderer;
-        AxisRender axisRender;
-        MeshRender meshRender;
-        Matrix4 projection;
+    BoundingBoxRenderer boundingBoxRenderer;
+    AxisRender axisRender;
+    MeshRender meshRender;
+    Matrix4 projection;
 
-        Camera cam = new Camera(10.2f, 0.02f);
-        private bool mouseDown = false;
-        Vector2 lastMousePos = new Vector2();
-        private Frustum frustum = new Frustum();
+    Camera cam = new(10.2f, 0.02f);
+    private bool mouseDown = false;
+    Vector2 lastMousePos = new();
+    private Frustum frustum = new();
 
-        private int _frameCount = 0;            // Количество кадров за текущую секунду
-        private double _elapsedTime = 0.0;     // Прошедшее время с начала отсчёта
-        private double _fps = 0.0;             // Текущее значение FPS
+    private int _frameCount;
+    private double _elapsedTime;
+    private double _fps;
 
-        Minimap minimap;
+    Minimap minimap;
+    SciFiPanelOverlay settingsPanel;
+    SidebarMenu sidebarMenu;
+    UiScreen uiScreen;
 
-        public HeightmapGame()
-            : base(
-        new GameWindowSettings { UpdateFrequency = 60.0 },
+    public HeightmapGame()
+        : base(
+            new GameWindowSettings { UpdateFrequency = 60.0 },
             new NativeWindowSettings
             {
                 IsEventDriven = true,
                 APIVersion = new Version(3, 3),
                 Profile = ContextProfile.Core,
                 NumberOfSamples = 0,
-                AlphaBits = 8   // 🔥 КЛЮЧЕВАЯ СТРОКА
+                AlphaBits = 8
             })
-        {
-            MolaDataReader reader = new MolaDataReader();
-            var parameters = reader.ReadLblFile(@"d:\Dev\_Graphics\Mars\data\mola\meg128\megt44n180hb.lbl");
+    {
+        var reader = new MolaDataReader();
+        var parameters = reader.ReadLblFile(AppPaths.DataPath("mola", "meg128", "megt44n180hb.lbl"));
+        mapData = reader.ReadImgFile(AppPaths.DataPath("mola", "meg128", "megt00n000hb.img"), parameters, 8);
+    }
 
-            mapData = reader.ReadImgFile(@"d:\Dev\_Graphics\Mars\data\mola\meg128\megt44n180hb.img", parameters, 8);
+    protected override void OnLoad()
+    {
+        base.OnLoad();
+
+        UpdateUiLayout();
+
+        var minimapImage = AppPaths.FindMinimapImage()
+            ?? throw new FileNotFoundException(
+                "Minimap image not found. Place Mars_topography_(MOLA_dataset)_HiRes.png (or .jpg) in the data/ folder.",
+                AppPaths.DataPath("Mars_topography_(MOLA_dataset)_HiRes.png"));
+
+        minimap = new Minimap(minimapImage, uiScreen.FramebufferWidth, uiScreen.FramebufferHeight, uiScreen.ScaleY);
+        settingsPanel = new SciFiPanelOverlay(uiScreen.FramebufferWidth, uiScreen.FramebufferHeight);
+        sidebarMenu = new SidebarMenu(uiScreen);
+
+        GL.ClearColor(0.1f, 0.2f, 0.3f, 1.0f);
+        GL.Enable(EnableCap.DepthTest);
+        GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
+        GL.ClearDepth(1.0f);
+        GL.DepthFunc(DepthFunction.Lequal);
+        GL.Hint(HintTarget.PolygonSmoothHint, HintMode.Nicest);
+
+        meshRender = new MeshRender(mapData);
+        cam.Position = new Vector3(749, 198, 203);
+        cam.Orientation = new Vector3(3.09f, -1.190f, 0.0f);
+        boundingBoxRenderer = new BoundingBoxRenderer();
+        boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
+        axisRender = new AxisRender(100.0f, 2.5f, 10.0f, meshRender.ModelCenter);
+    }
+
+    protected override void OnMouseDown(MouseButtonEventArgs e)
+    {
+        base.OnMouseDown(e);
+
+        if (e.Button == MouseButton.Left)
+        {
+            var mouse = uiScreen.ClientToFramebuffer(MouseState.X, MouseState.Y);
+            if (sidebarMenu.HandleMouseDown(mouse.X, mouse.Y))
+                return;
+
+            minimap.IsVisible = sidebarMenu.IsMinimapVisible;
+            if (minimap.IsVisible && minimap.HandleMouseDown(mouse.X, mouse.Y))
+                return;
+
+            settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
+            if (settingsPanel.IsVisible && settingsPanel.HandleMouseDown(mouse.X, mouse.Y))
+                return;
         }
 
+        mouseDown = true;
+        lastMousePos = new Vector2(MouseState.X, MouseState.Y);
+    }
 
-        protected override void OnLoad()
+    protected override void OnMouseUp(MouseButtonEventArgs e)
+    {
+        base.OnMouseUp(e);
+        mouseDown = false;
+    }
+
+    protected override void OnMouseMove(MouseMoveEventArgs e)
+    {
+        base.OnMouseMove(e);
+        var mouse = uiScreen.ClientToFramebuffer(MouseState.X, MouseState.Y);
+        sidebarMenu.UpdateMouse(mouse.X, mouse.Y);
+
+        if (!mouseDown)
+            return;
+
+        if (MouseState.IsButtonDown(MouseButton.Left))
         {
-            base.OnLoad();
-
-            minimap = new Minimap("Mars_topography_(MOLA_dataset)_HiRes_2.jpg", Size.X, Size.Y);
-            //minimap.Toggle();
-
-            //Position: (-142, 66658; 103,019356; 204,69543)       Orientation: (1, 5987905; -0,2156; 0)
-            //cam.Position = new Vector3(25, 0, 200);
-            //cam.Orientation = new Vector3((float)Math.PI, 0.694f, -0.14f);
-            //textRenderer = new TextRenderer(@"C:\Windows\Fonts\arial.ttf", Size.X, Size.Y, 48);
-
-            GL.ClearColor(0.1f, 0.2f, 0.3f, 1.0f);
-            GL.Enable(EnableCap.DepthTest);
-
-            // Включаем режим каркаса
-            //GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
-            GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
-            GL.ClearDepth(1.0f);	  									// Depth Buffer Setup
-            GL.DepthFunc(DepthFunction.Lequal);
-            GL.Enable(EnableCap.DepthTest);                                 // Enable Depth Testing
-
-            //GL.Hint(HintTarget.PerspectiveCorrectionHint, HintMode.Nicest);         // Set Perspective Calculations To Most Accurate
-
-            GL.Hint(HintTarget.PolygonSmoothHint, HintMode.Nicest);         // Set Perspective Calculations To Most Accurate
-
-
-            //GL.CullFace(CullFaceMode.Back);
-            //GL.PolygonMode(MaterialFace.Front, PolygonMode.Fill);
-            //GL.FrontFace(FrontFaceDirection.Ccw);
-            //var errorCode = GL.GetError();
-
-            //GL.Enable(EnableCap.Normalize);
-            //GL.Enable(EnableCap.ColorMaterial);
-
-            meshRender = new MeshRender(mapData);
-            //cam.Position = new Vector3(meshRender.ModelCenter.X, meshRender.ModelCenter.Y + 100.0f, meshRender.ModelCenter.Z); // Поднимаем камеру над центром
-            //cam.Orientation = new Vector3(0.0f, -1.0f, 0.0f);
-            cam.Position = new Vector3(749, 198, 203); // Поднимаем камеру над центром
-            cam.Orientation = new Vector3(3.09f, -1.190f, 0.0f);
-            boundingBoxRenderer = new BoundingBoxRenderer();
-            boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
-
-            Console.WriteLine($"MinX: {meshRender.MinX}, MaxX: {meshRender.MaxX}");
-            Console.WriteLine($"MinY: {meshRender.MinY}, MaxY: {meshRender.MaxY}");
-            Console.WriteLine($"MinZ: {meshRender.MinZ}, MaxZ: {meshRender.MaxZ}");
-
-            axisRender = new AxisRender(100.0f, 2.5f, 10.0f, meshRender.ModelCenter);
+            Vector2 delta = lastMousePos - new Vector2(e.X, e.Y);
+            cam.AddRotation(delta.X / 10, delta.Y / 10);
+            lastMousePos = new Vector2(e.X, e.Y);
         }
 
-        protected override void OnMouseDown(MouseButtonEventArgs e)
+        if (MouseState.IsButtonDown(MouseButton.Right))
         {
-            base.OnMouseDown(e);
+            if (e.Y > lastMousePos.Y)
+                cam.Move(0f, 0f, 0.1f);
+            else
+                cam.Move(0f, 0f, -0.1f);
 
-            mouseDown = true;
-            lastMousePos = new Vector2(MouseState.X, MouseState.Y);
-
-            if (e.Button == MouseButton.Left)
-            {
-                minimap.HandleMouseDown(MouseState.X, MouseState.Y);
-            }
+            lastMousePos = new Vector2(e.X, e.Y);
         }
+    }
 
-        protected override void OnMouseUp(MouseButtonEventArgs e)
+    protected override void OnMouseWheel(MouseWheelEventArgs e)
+    {
+        base.OnMouseWheel(e);
+
+        if (e.OffsetY > 0)
+            cam.Move(0f, 10000.0f, 0f);
+        else if (e.OffsetY < 0)
+            cam.Move(0f, -10000.0f, 0f);
+    }
+
+    protected override void OnUpdateFrame(FrameEventArgs args)
+    {
+        base.OnUpdateFrame(args);
+
+        _frameCount++;
+        _elapsedTime += args.Time;
+
+        if (_elapsedTime >= 1.0)
         {
-            base.OnMouseUp(e);
-            mouseDown = false;
+            _fps = _frameCount / _elapsedTime;
+            _frameCount = 0;
+            _elapsedTime = 0.0;
+            Title = $"Mars MOLA Viewer - FPS: {_fps:F2}";
         }
+    }
 
-        protected override void OnMouseMove(MouseMoveEventArgs e)
-        {
-            base.OnMouseMove(e);
-            if (mouseDown)
-            {
-                if (MouseState.IsButtonDown(MouseButton.Left))
-                {
-                    //// Вычисляем смещение мыши
-                    //Vector2 delta = lastMousePos - new Vector2(e.X, e.Y);
+    protected override void OnRenderFrame(FrameEventArgs args)
+    {
+        base.OnRenderFrame(args);
 
-                    //// Поворот камеры
-                    //cam.AddRotation(-delta.X, -delta.Y); // Инверсируем X и Y для естественного поведения
+        GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
-                    //// Обновляем последнюю позицию мыши
-                    //lastMousePos = new Vector2(e.X, e.Y);
+        Matrix4 view = cam.GetViewMatrix();
+        frustum.Update(view * projection);
 
+        axisRender.DrawAxis(view, projection);
+        meshRender.DrawMesh(view, projection, Matrix4.Identity, cam.Position, frustum);
+        boundingBoxRenderer.DrawBoundingBox(view, projection);
 
-                    Vector2 delta = lastMousePos - new Vector2(e.X, e.Y);
-                    cam.AddRotation(delta.X / 10, delta.Y / 10);
-                    lastMousePos = new Vector2(e.X, e.Y);
-                }
+        var panelOrigin = new Vector2(12f, sidebarMenu.BottomY + 8f);
 
-                if (MouseState.IsButtonDown(MouseButton.Right))
-                {
-                    //// Перемещение по оси Y
-                    //float deltaY = lastMousePos.Y - e.Y;
-                    //cam.Move(0f, deltaY * 0.1f, 0f);
+        minimap.IsVisible = sidebarMenu.IsMinimapVisible;
+        minimap.SetPanelOrigin(panelOrigin);
+        minimap.Render((float)args.Time);
 
-                    //lastMousePos = new Vector2(e.X, e.Y);
-                    if (e.Y > lastMousePos.Y)
-                        cam.Move(0f, 0f, 0.1f);
-                    else
-                        cam.Move(0f, 0f, -0.1f);
+        settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
+        settingsPanel.SetPanelOrigin(panelOrigin);
+        settingsPanel.Render();
 
-                    lastMousePos = new Vector2(e.X, e.Y);
-                }
+        sidebarMenu.Render();
 
-            }
-        }
+        SwapBuffers();
+    }
 
-        protected override void OnMouseWheel(MouseWheelEventArgs e)
-        {
-            base.OnMouseWheel(e);
+    private void UpdateUiLayout()
+    {
+        uiScreen = UiScreen.From(this);
+        GL.Viewport(0, 0, uiScreen.FramebufferWidth, uiScreen.FramebufferHeight);
+        minimap?.UpdateScreenSize(uiScreen.FramebufferWidth, uiScreen.FramebufferHeight, uiScreen.ScaleY);
+        settingsPanel?.UpdateScreenSize(uiScreen.FramebufferWidth, uiScreen.FramebufferHeight);
+        sidebarMenu?.UpdateScreenSize(uiScreen);
 
-            // Перемещение камеры вдоль оси Z при скроллинге мыши
-            if (e.OffsetY > 0)
-            {
-                cam.Move(0f, 10000.0f, 0f); // Прокрутка вверх — движение вперёд
-            }
-            else if (e.OffsetY < 0)
-            {
-                cam.Move(0f, -10000.0f, 0f); // Прокрутка вниз — движение назад
-            }
-        }
+        projection = Matrix4.CreatePerspectiveFieldOfView(
+            MathHelper.DegreesToRadians(45.0f),
+            uiScreen.ClientWidth / (float)Math.Max(1, uiScreen.ClientHeight),
+            0.1f,
+            90000.0f);
+    }
 
-        protected override void OnUpdateFrame(FrameEventArgs args)
-        {
-            base.OnUpdateFrame(args);
-
-            _frameCount++;
-            _elapsedTime += args.Time;
-
-            if (_elapsedTime >= 1.0)
-            {
-                _fps = _frameCount / _elapsedTime;
-                _frameCount = 0;
-                _elapsedTime = 0.0;
-
-                // Устанавливаем заголовок окна
-                Title = $"RandomHeightmapGame3 - FPS: {_fps:F2}";
-            }
-        }
-
-        protected override void OnRenderFrame(FrameEventArgs args)
-        {
-            base.OnRenderFrame(args);
-
-            GL.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
-
-            // Обновляем фруструм
-            Matrix4 view = cam.GetViewMatrix();
-            // Обновление фрустума
-            frustum.Update(view * projection);
-
-            axisRender.DrawAxis(view, projection);
-
-            meshRender.DrawMesh(view, projection, Matrix4.Identity, cam.Position, frustum);
-
-            boundingBoxRenderer.DrawBoundingBox(view, projection);
-
-            minimap.Render((float)args.Time);
-
-            SwapBuffers();
-        }
-
-        protected override void OnResize(ResizeEventArgs e)
-        {
-            base.OnResize(e);
-
-            // Обновляем проекцию для миникарты
-            minimap.UpdateScreenSize(Size.X, Size.Y);
-
-            projection = Matrix4.CreatePerspectiveFieldOfView(
-                MathHelper.DegreesToRadians(45.0f),
-                Size.X / (float)Size.Y,
-                0.1f,
-                90000.0f);
-
-            GL.Viewport(0, 0, Size.X, Size.Y);
-        }
+    protected override void OnResize(ResizeEventArgs e)
+    {
+        base.OnResize(e);
+        UpdateUiLayout();
     }
 }

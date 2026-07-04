@@ -22,6 +22,9 @@ namespace Mars
         /// <summary>false==DirectX TexCoords, true==OpenGL TexCoords (Default: true)</summary>
         public bool FlipImages { get; set; } = true;
 
+        /// <summary>Rotate image 180 degrees after loading (Default: false)</summary>
+        public bool Rotate180 { get; set; } = false;
+
         /// <summary>When enabled, will use Glu to create MipMaps for images loaded with GDI+ (Default: false)</summary>
         public bool BuildMipmapsForUncompressed { get; set; } = false;
 

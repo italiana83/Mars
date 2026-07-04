@@ -1,20 +1,14 @@
-﻿using OpenTK.Graphics.OpenGL4;
+using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using System.Drawing;
 using System.Reflection;
 
 namespace Mars;
 
-public sealed class Minimap : IDisposable
+public sealed class SciFiPanelOverlay : IDisposable
 {
-    private const float Margin = 12f;
     private const float Chamfer = 10f;
     private const float OutlineWidth = 1.5f;
-
-    private const float ImgMarginL = 2f;
-    private const float ImgMarginT = 10f;
-    private const float ImgMarginR = 2f;
-    private const float ImgMarginB = 2f;
 
     private static readonly Vector4 CyanBorder = new(0.02f, 0.90f, 0.98f, 0.95f);
     private static readonly Vector4 CyanGlowOuter = new(0.02f, 0.90f, 0.98f, 0.10f);
@@ -23,57 +17,34 @@ public sealed class Minimap : IDisposable
 
     public bool IsVisible { get; set; }
 
-    private Vector2 _panelOrigin = new(Margin, Margin);
-    private float _scaleY = 1f;
+    private Vector2 _panelOrigin;
     private int _screenW, _screenH;
-    private int _imgW, _imgH;
 
-    private int _vaoTex, _vboTex;
     private int _vaoPoly, _vboPoly;
     private int _uboOrtho;
-    private int _textureId;
-
-    private Shader _textureShader;
     private Shader _colorShader;
     private Matrix4 _ortho;
 
-    private readonly float[] _quadVertices =
-    {
-        0f, 1f,  0f, 1f,
-        1f, 1f,  1f, 1f,
-        1f, 0f,  1f, 0f,
-        0f, 1f,  0f, 1f,
-        1f, 0f,  1f, 0f,
-        0f, 0f,  0f, 0f
-    };
-
     public void SetPanelOrigin(Vector2 origin) => _panelOrigin = origin;
 
-    public float PanelHeight => _screenH * 0.5f;
-
-    public Minimap(string imagePath, int w, int h, float scaleY = 1f)
+    public SciFiPanelOverlay(int w, int h)
     {
         _screenW = w;
         _screenH = h;
-        _scaleY = scaleY;
-
-        LoadTexture(imagePath);
-        InitTexBuffers();
         InitPolyBuffers();
         InitShaders();
         InitUbo();
         UpdateOrtho();
     }
 
-    public void UpdateScreenSize(int w, int h, float scaleY = 1f)
+    public void UpdateScreenSize(int w, int h)
     {
         _screenW = w;
         _screenH = h;
-        _scaleY = scaleY;
         UpdateOrtho();
     }
 
-    public void Render(float dt)
+    public void Render()
     {
         if (!IsVisible)
             return;
@@ -86,51 +57,19 @@ public sealed class Minimap : IDisposable
         GL.Enable(EnableCap.Blend);
         GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-        RenderPanel();
+        var size = new Vector2(_screenW * 0.5f, _screenH * 0.5f);
+        DrawSciFiPanel(_panelOrigin, size, FillDark);
 
         GL.Disable(EnableCap.Blend);
         GL.Enable(EnableCap.DepthTest);
         GL.PolygonMode(MaterialFace.FrontAndBack, (PolygonMode)polygonMode[0]);
     }
 
-    public bool HandleMouseDown(float mouseX, float mouseY)
-    {
-        if (!IsVisible)
-            return false;
+    public bool HandleMouseDown(float mouseX, float mouseY) =>
+        IsVisible && GetPanelRect().Contains(mouseX, mouseY);
 
-        return GetPanelRect().Contains(mouseX, mouseY);
-    }
-
-    public RectangleF GetPanelRect()
-    {
-        return new RectangleF(_panelOrigin.X, _panelOrigin.Y, _screenW * 0.5f, _screenH * 0.5f);
-    }
-
-    private void RenderPanel()
-    {
-        var size = new Vector2(_screenW * 0.5f, _screenH * 0.5f);
-        var pos = _panelOrigin;
-
-        DrawSciFiPanel(pos, size, FillDark);
-
-        float l = UiScreen.MmToPixels(ImgMarginL, _scaleY);
-        float t = UiScreen.MmToPixels(ImgMarginT, _scaleY);
-        float r = UiScreen.MmToPixels(ImgMarginR, _scaleY);
-        float b = UiScreen.MmToPixels(ImgMarginB, _scaleY);
-
-        var imgPos = pos + new Vector2(l, t);
-        var imgSize = size - new Vector2(l + r, t + b);
-
-        _textureShader.Use();
-        _textureShader.SetVector2("uPos", imgPos);
-        _textureShader.SetVector2("uSize", imgSize);
-        _textureShader.SetInt("uTex", 0);
-
-        GL.ActiveTexture(TextureUnit.Texture0);
-        GL.BindTexture(TextureTarget.Texture2D, _textureId);
-        GL.BindVertexArray(_vaoTex);
-        GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
-    }
+    public RectangleF GetPanelRect() =>
+        new(_panelOrigin.X, _panelOrigin.Y, _screenW * 0.5f, _screenH * 0.5f);
 
     private void DrawSciFiPanel(Vector2 pos, Vector2 size, Vector4 fill)
     {
@@ -269,34 +208,6 @@ public sealed class Minimap : IDisposable
         GL.DrawArrays(PrimitiveType.Triangles, 0, vertices.Count);
     }
 
-    private void LoadTexture(string path)
-    {
-        ImageGDI.LoadFromDisk(
-            path,
-            new TextureLoaderParameters { FlipImages = false, Rotate180 = true },
-            out uint handle,
-            out _,
-            out _imgW,
-            out _imgH);
-
-        _textureId = (int)handle;
-    }
-
-    private void InitTexBuffers()
-    {
-        _vaoTex = GL.GenVertexArray();
-        _vboTex = GL.GenBuffer();
-
-        GL.BindVertexArray(_vaoTex);
-        GL.BindBuffer(BufferTarget.ArrayBuffer, _vboTex);
-        GL.BufferData(BufferTarget.ArrayBuffer, _quadVertices.Length * sizeof(float), _quadVertices, BufferUsageHint.StaticDraw);
-        GL.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), 0);
-        GL.EnableVertexAttribArray(0);
-        GL.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, 4 * sizeof(float), 2 * sizeof(float));
-        GL.EnableVertexAttribArray(1);
-        GL.BindVertexArray(0);
-    }
-
     private void InitPolyBuffers()
     {
         _vaoPoly = GL.GenVertexArray();
@@ -311,9 +222,7 @@ public sealed class Minimap : IDisposable
 
     private void InitShaders()
     {
-        _textureShader = new Shader(VertexTex, FragmentTex, ShaderSourceMode.Code);
         _colorShader = new Shader(VertexColor, FragmentColor, ShaderSourceMode.Code);
-        BindUbo(_textureShader);
         BindUbo(_colorShader);
     }
 
@@ -345,36 +254,10 @@ public sealed class Minimap : IDisposable
 
     public void Dispose()
     {
-        GL.DeleteBuffer(_vboTex);
-        GL.DeleteVertexArray(_vaoTex);
         GL.DeleteBuffer(_vboPoly);
         GL.DeleteVertexArray(_vaoPoly);
         GL.DeleteBuffer(_uboOrtho);
-        GL.DeleteTexture(_textureId);
     }
-
-    private const string VertexTex = @"
-#version 330 core
-layout(location=0) in vec2 aPos;
-layout(location=1) in vec2 aUV;
-layout(std140) uniform Ortho { mat4 uOrtho; };
-uniform vec2 uPos;
-uniform vec2 uSize;
-out vec2 vUV;
-void main() {
-    vec2 p = aPos * uSize + uPos;
-    gl_Position = uOrtho * vec4(p, 0, 1);
-    vUV = aUV;
-}";
-
-    private const string FragmentTex = @"
-#version 330 core
-in vec2 vUV;
-uniform sampler2D uTex;
-out vec4 FragColor;
-void main() {
-    FragColor = texture(uTex, vUV);
-}";
 
     private const string VertexColor = @"
 #version 330 core

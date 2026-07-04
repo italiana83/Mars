@@ -1,182 +1,232 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Runtime.InteropServices;
-using OpenTK.Graphics.OpenGL4;
+﻿using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
-using StbTrueTypeSharp;
-using static StbTrueTypeSharp.StbTrueType;
+using SkiaSharp;
 
+namespace Mars;
 
-namespace Mars
+public class TextRenderer : IDisposable
 {
-    using OpenTK.Graphics.OpenGL4;
-    using OpenTK.Mathematics;
-    using StbTrueTypeSharp;
-    using System;
-    using System.Collections.Generic;
-    using System.IO;
+    private readonly int _vao, _vbo;
+    private readonly Shader _textShader;
+    private readonly Dictionary<int, Character> _characters = new();
+    private readonly SKTypeface _typeface;
+    private readonly float _fontSize;
+    private readonly float _ascent;
+    private readonly float _descent;
 
-    public class TextRenderer
+    public float LineHeight => _ascent + _descent;
+
+    public float MeasureTextHeight(string text)
     {
-        private readonly int _vao, _vbo;
-        private readonly Shader _textShader;
-        private readonly Dictionary<char, Character> _characters = new();
+        using var font = new SKFont(_typeface, _fontSize) { Edging = SKFontEdging.Antialias };
+        font.MeasureText(text, out var bounds);
+        return bounds.Height;
+    }
 
-        private struct Character
+    public void RenderTextFromTop(string text, float x, float topY, float scale, Vector3 color)
+    {
+        using var font = new SKFont(_typeface, _fontSize) { Edging = SKFontEdging.Antialias };
+        font.MeasureText(text, out var bounds);
+        float baseline = topY - bounds.Top * scale;
+        RenderText(text, x, baseline / scale - _ascent, scale, color);
+    }
+
+    private struct Character
+    {
+        public int TextureID;
+        public Vector2 Size;
+        public Vector2 Bearing;
+        public float Advance;
+    }
+
+    public static string ResolveSystemFont()
+    {
+        var fontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+        foreach (var name in new[] { "segoeui.ttf", "arial.ttf", "calibri.ttf", "tahoma.ttf" })
         {
-            public int TextureID;    // ID текстуры глифа
-            public Vector2 Size;     // Размер глифа
-            public Vector2 Bearing;  // Смещение глифа относительно базовой линии
-            public float Advance;    // Смещение для следующего глифа
+            var path = Path.Combine(fontsDir, name);
+            if (File.Exists(path))
+                return path;
         }
 
-        public TextRenderer(string fontPath, int screenWidth, int screenHeight, float fontSize = 24f)
+        throw new FileNotFoundException("No suitable UI font found in system fonts folder.");
+    }
+
+    public TextRenderer(string fontPath, int screenWidth, int screenHeight, float fontSize = 24f)
+    {
+        _typeface = SKTypeface.FromFile(fontPath) ?? SKTypeface.FromFamilyName("Segoe UI") ?? SKTypeface.Default;
+        _fontSize = fontSize;
+
+        using (var probe = new SKFont(_typeface, fontSize))
         {
-            // Загружаем шрифт
-            var fontInfo = new StbTrueType.stbtt_fontinfo();
-            byte[] fontData = File.ReadAllBytes(fontPath);
-            unsafe
-            {
-                fixed (byte* fontPtr = fontData)
-                {
-                    StbTrueType.stbtt_InitFont(fontInfo, fontPtr, StbTrueType.stbtt_GetFontOffsetForIndex(fontPtr, 0));
-                }
-            }
-
-            // Генерация текстур для символов
-            float scale = StbTrueType.stbtt_ScaleForPixelHeight(fontInfo, fontSize);
-            for (char c = ' '; c <= '~'; c++)
-            {
-                unsafe
-                {
-                    int width, height, xOffset, yOffset;
-                    byte* bitmap = StbTrueType.stbtt_GetCodepointBitmap(fontInfo, 0, scale, c, &width, &height, &xOffset, &yOffset);
-
-                    if (bitmap != null)
-                    {
-                        int texture = GL.GenTexture();
-                        GL.BindTexture(TextureTarget.Texture2D, texture);
-
-                        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R8, width, height, 0,
-                            PixelFormat.Red, PixelType.UnsignedByte, (IntPtr)bitmap);
-
-                        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
-                        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
-
-                        int advanceWidth, leftSideBearing;
-                        StbTrueType.stbtt_GetCodepointHMetrics(fontInfo, c, &advanceWidth, &leftSideBearing);
-                        float advance = advanceWidth * scale;
-
-                        // Храним данные символа
-                        _characters[c] = new Character
-                        {
-                            TextureID = texture,
-                            Size = new Vector2(width, height),
-                            Bearing = new Vector2(xOffset, yOffset),
-                            Advance = advance
-                        };
-
-                        StbTrueType.stbtt_FreeBitmap(bitmap, null);
-                    }
-                }
-            }
-
-            // Создание VAO и VBO
-            _vao = GL.GenVertexArray();
-            _vbo = GL.GenBuffer();
-
-            GL.BindVertexArray(_vao);
-            GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
-
-            GL.BufferData(BufferTarget.ArrayBuffer, 6 * 4 * sizeof(float), IntPtr.Zero, BufferUsageHint.DynamicDraw);
-
-            GL.VertexAttribPointer(0, 4, VertexAttribPointerType.Float, false, 4 * sizeof(float), 0);
-            GL.EnableVertexAttribArray(0);
-
-            GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
-            GL.BindVertexArray(0);
-
-
-
-
-            // Создаем шейдеры
-            string vertexShaderSource = @"
-            #version 330 core
-            layout (location = 0) in vec4 vertex;
-            out vec2 TexCoords;
-
-            uniform mat4 projection;
-
-            void main()
-            {
-                gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
-                TexCoords = vertex.zw;
-            }";
-
-            string fragmentShaderSource = @"
-            #version 330 core
-            in vec2 TexCoords;
-            out vec4 FragColor;
-
-            uniform sampler2D text;
-            uniform vec3 textColor;
-
-            void main()
-            {
-                vec4 sampled = vec4(1.0, 1.0, 1.0, texture(text, TexCoords).r);
-                FragColor = vec4(textColor, 1.0) * sampled;
-            }";
-
-            _textShader = new Shader(vertexShaderSource, fragmentShaderSource, ShaderSourceMode.Code);
-
-            // Устанавливаем проекционную матрицу
-            Matrix4 projection = Matrix4.CreateOrthographicOffCenter(0, screenWidth, 0, screenHeight, -1.0f, 1.0f);
-            _textShader.Use();
-            _textShader.SetMatrix4("projection", projection);
+            probe.GetFontMetrics(out var metrics);
+            _ascent = -metrics.Ascent;
+            _descent = metrics.Descent;
         }
 
-        public void RenderText(string text, float x, float y, float scale, Vector3 color)
+        _vao = GL.GenVertexArray();
+        _vbo = GL.GenBuffer();
+
+        GL.BindVertexArray(_vao);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+        GL.BufferData(BufferTarget.ArrayBuffer, 6 * 4 * sizeof(float), IntPtr.Zero, BufferUsageHint.DynamicDraw);
+        GL.VertexAttribPointer(0, 4, VertexAttribPointerType.Float, false, 4 * sizeof(float), 0);
+        GL.EnableVertexAttribArray(0);
+        GL.BindBuffer(BufferTarget.ArrayBuffer, 0);
+        GL.BindVertexArray(0);
+
+        const string vertexShaderSource = @"
+#version 330 core
+layout (location = 0) in vec4 vertex;
+out vec2 TexCoords;
+uniform mat4 projection;
+void main()
+{
+    gl_Position = projection * vec4(vertex.xy, 0.0, 1.0);
+    TexCoords = vertex.zw;
+}";
+
+        const string fragmentShaderSource = @"
+#version 330 core
+in vec2 TexCoords;
+out vec4 FragColor;
+uniform sampler2D text;
+uniform vec3 textColor;
+void main()
+{
+    float alpha = texture(text, TexCoords).r;
+    FragColor = vec4(textColor, alpha);
+}";
+
+        _textShader = new Shader(vertexShaderSource, fragmentShaderSource, ShaderSourceMode.Code);
+        _textShader.Use();
+        _textShader.SetInt("text", 0);
+        UpdateScreenSize(screenWidth, screenHeight);
+    }
+
+    public void EnsureGlyphs(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
         {
-            _textShader.Use();
-            _textShader.SetVector3("textColor", color);
-            GL.ActiveTexture(TextureUnit.Texture0);
-            GL.BindVertexArray(_vao);
-
-            foreach (char c in text)
-            {
-                if (!_characters.TryGetValue(c, out var ch))
-                    continue;
-
-                float xpos = x + ch.Bearing.X * scale;
-                float ypos = y - (ch.Size.Y - ch.Bearing.Y) * scale;
-
-                float w = ch.Size.X * scale;
-                float h = ch.Size.Y * scale;
-
-                float[] vertices = {
-                xpos,     ypos + h,   0.0f, 0.0f,
-                xpos,     ypos,       0.0f, 1.0f,
-                xpos + w, ypos,       1.0f, 1.0f,
-
-                xpos,     ypos + h,   0.0f, 0.0f,
-                xpos + w, ypos,       1.0f, 1.0f,
-                xpos + w, ypos + h,   1.0f, 0.0f
-            };
-
-                GL.BindTexture(TextureTarget.Texture2D, ch.TextureID);
-                GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
-                GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, vertices.Length * sizeof(float), vertices);
-
-                GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
-
-                x += (ch.Advance / 64.0f) * scale; // Advance хранится в 1/64 пикселя
-            }
-
-            GL.BindVertexArray(0);
-            GL.BindTexture(TextureTarget.Texture2D, 0);
+            int cp = rune.Value;
+            if (!_characters.ContainsKey(cp))
+                LoadGlyph(cp);
         }
     }
 
+    public void UpdateScreenSize(int width, int height)
+    {
+        var projection = Matrix4.CreateOrthographicOffCenter(0, width, height, 0, -1f, 1f);
+        _textShader.Use();
+        _textShader.SetMatrix4("projection", projection);
+    }
 
+    public void RenderText(string text, float x, float y, float scale, Vector3 color)
+    {
+        EnsureGlyphs(text);
+
+        _textShader.Use();
+        _textShader.SetVector3("textColor", color);
+        _textShader.SetInt("text", 0);
+        GL.ActiveTexture(TextureUnit.Texture0);
+        GL.BindVertexArray(_vao);
+
+        float baseline = y + _ascent * scale;
+
+        foreach (var rune in text.EnumerateRunes())
+        {
+            int cp = rune.Value;
+            if (!_characters.TryGetValue(cp, out var ch))
+                continue;
+
+            float xpos = x + ch.Bearing.X * scale;
+            float ypos = baseline + ch.Bearing.Y * scale;
+            float w = ch.Size.X * scale;
+            float h = ch.Size.Y * scale;
+
+            float[] vertices =
+            {
+                xpos,     ypos,     0f, 0f,
+                xpos,     ypos + h, 0f, 1f,
+                xpos + w, ypos + h, 1f, 1f,
+
+                xpos,     ypos,     0f, 0f,
+                xpos + w, ypos + h, 1f, 1f,
+                xpos + w, ypos,     1f, 0f
+            };
+
+            GL.BindTexture(TextureTarget.Texture2D, ch.TextureID);
+            GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+            GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, vertices.Length * sizeof(float), vertices);
+            GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
+
+            x += ch.Advance * scale;
+        }
+
+        GL.BindVertexArray(0);
+        GL.BindTexture(TextureTarget.Texture2D, 0);
+    }
+
+    private void LoadGlyph(int codepoint)
+    {
+        if (_characters.ContainsKey(codepoint))
+            return;
+
+        var text = char.ConvertFromUtf32(codepoint);
+        using var font = new SKFont(_typeface, _fontSize)
+        {
+            Edging = SKFontEdging.Antialias,
+            Subpixel = false
+        };
+        using var paint = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Fill,
+            Color = SKColors.White
+        };
+
+        font.MeasureText(text, out var bounds);
+        float advance = font.MeasureText(text);
+
+        const int pad = 2;
+        int width = Math.Max(1, (int)Math.Ceiling(bounds.Width) + pad * 2);
+        int height = Math.Max(1, (int)Math.Ceiling(bounds.Height) + pad * 2);
+
+        using var bitmap = new SKBitmap(width, height, SKColorType.Alpha8, SKAlphaType.Premul);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            canvas.Clear(SKColors.Transparent);
+            canvas.DrawText(text, pad - bounds.Left, pad - bounds.Top, font, paint);
+        }
+
+        var pixels = bitmap.GetPixelSpan();
+        int texture = GL.GenTexture();
+        GL.BindTexture(TextureTarget.Texture2D, texture);
+        GL.PixelStore(PixelStoreParameter.UnpackAlignment, 1);
+        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.R8, width, height, 0,
+            PixelFormat.Red, PixelType.UnsignedByte, ref pixels[0]);
+        GL.PixelStore(PixelStoreParameter.UnpackAlignment, 4);
+        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.ClampToEdge);
+        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.ClampToEdge);
+        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
+        GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+
+        _characters[codepoint] = new Character
+        {
+            TextureID = texture,
+            Size = new Vector2(width, height),
+            Bearing = new Vector2(pad - bounds.Left, bounds.Top - pad),
+            Advance = advance
+        };
+    }
+
+    public void Dispose()
+    {
+        foreach (var ch in _characters.Values)
+            GL.DeleteTexture(ch.TextureID);
+
+        GL.DeleteBuffer(_vbo);
+        GL.DeleteVertexArray(_vao);
+        _typeface.Dispose();
+    }
 }

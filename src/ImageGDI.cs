@@ -19,6 +19,9 @@ namespace Mars
 
             try // Exceptions will be thrown if any Problem occurs while working on the file. 
             {
+                if (!File.Exists(filename))
+                    throw new FileNotFoundException("Image file not found.", filename);
+
                 using (var stream = new SKFileStream(filename))
                 using (var codec = SKCodec.Create(stream))
                 {
@@ -44,6 +47,21 @@ namespace Mars
                         var flippedBitmap = SKBitmap.FromImage(surface.Snapshot());
                         currentBitmap.Dispose();
                         currentBitmap = flippedBitmap;
+                    }
+                }
+
+                if (parameters.Rotate180)
+                {
+                    using (var surface = SKSurface.Create(new SKImageInfo(currentBitmap.Width, currentBitmap.Height)))
+                    {
+                        var canvas = surface.Canvas;
+                        canvas.Translate(currentBitmap.Width, currentBitmap.Height);
+                        canvas.Scale(-1, -1);
+                        canvas.DrawBitmap(currentBitmap, 0, 0);
+
+                        var rotatedBitmap = SKBitmap.FromImage(surface.Snapshot());
+                        currentBitmap.Dispose();
+                        currentBitmap = rotatedBitmap;
                     }
                 }
 
@@ -176,6 +194,9 @@ namespace Mars
 
             try // Exceptions will be thrown if any Problem occurs while working on the file. 
             {
+                if (!File.Exists(filename))
+                    throw new FileNotFoundException("Image file not found.", filename);
+
                 // Load bitmap using SkiaSharp
                 currentBitmap = SKBitmap.Decode(filename);
                 if (currentBitmap == null)
@@ -195,6 +216,21 @@ namespace Mars
                         var flippedBitmap = SKBitmap.FromImage(surface.Snapshot());
                         currentBitmap.Dispose();
                         currentBitmap = flippedBitmap;
+                    }
+                }
+
+                if (parameters.Rotate180)
+                {
+                    using (var surface = SKSurface.Create(new SKImageInfo(currentBitmap.Width, currentBitmap.Height)))
+                    {
+                        var canvas = surface.Canvas;
+                        canvas.Translate(currentBitmap.Width, currentBitmap.Height);
+                        canvas.Scale(-1, -1);
+                        canvas.DrawBitmap(currentBitmap, 0, 0);
+
+                        var rotatedBitmap = SKBitmap.FromImage(surface.Snapshot());
+                        currentBitmap.Dispose();
+                        currentBitmap = rotatedBitmap;
                     }
                 }
 

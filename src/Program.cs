@@ -1,20 +1,13 @@
-﻿using Mars;
-using OpenTK.Windowing.Desktop;
-using System;
+﻿using OpenTK.Windowing.Desktop;
 
-namespace GravitationalWaveVisualizer
+namespace Mars;
+
+class Program
 {
-    class Program
+    static void Main(string[] args)
     {
-        static void Main(string[] args)
-        {
-            //MEGDR Data Online
-            //https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
-
-            using (var window = new HeightmapGame())
-            {
-                window.Run();
-            }
-        }
+        // MEGDR Data Online: https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
+        using var window = new HeightmapGame();
+        window.Run();
     }
 }
