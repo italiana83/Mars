@@ -7,15 +7,20 @@ using System.Threading.Tasks;
 
 namespace Mars
 {
+    /// <summary>
+    /// Хранит все чанки меша и возвращает только те, чей bbox пересекается с frustum камеры.
+    /// </summary>
     public class ChunkManager
     {
         public List<Chunk> Chunks { get; set; }
 
+        /// <summary>Инициализирует пустой список чанков меша.</summary>
         public ChunkManager()
         {
             Chunks = new List<Chunk>();
         }
 
+        /// <summary>Возвращает чанки, чей bbox пересекается с frustum камеры.</summary>
         public List<Chunk> GetVisibleChunks(Frustum frustum)
         {
             List<Chunk> visibleChunks = new List<Chunk>();

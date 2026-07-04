@@ -3,14 +3,31 @@ using OpenTK.Mathematics;
 
 namespace Mars;
 
+/// <summary>
+/// Рендеринг heightmap-меша MOLA: разбиение на чанки, frustum culling и раскраска по высоте.
+/// </summary>
 public class MeshRender : IDisposable
 {
+    /// <summary>
+    /// Размер чанка в ячейках heightmap (100×100). Меньшие чанки — точнее отсечение по frustum,
+    /// но больше draw calls; большие — наоборот.
+    /// </summary>
     private const int ChunkSize = 100;
 
+    /// <summary>Исходные вершины heightmap из MOLA (.img): позиция (X,Y,Z) + высота в W-компоненте.</summary>
     private readonly MapData _mapData;
+
+    /// <summary>Шейдер с vertex/fragment stages; fragment shader интерполирует цвет по высоте вершины.</summary>
     private readonly Shader _shader;
+
+    /// <summary>Набор чанков меша и логика выбора видимых чанков относительно камеры.</summary>
     private readonly ChunkManager _chunkManager;
 
+    /// <summary>
+    /// Нормализованные уровни высоты (0 = минимум рельефа, 1 = максимум) для построения цветовой шкалы.
+    /// Каждый коэффициент задаёт опорную точку градиента; между соседними точками цвет линейно интерполируется в шейдере.
+    /// Значения убывают от 1.0 к 0.0 — от высоких участков к низким (дно кратеров).
+    /// </summary>
     private readonly List<float> _normalizedCoefficients =
     [
         1.0f, 0.931f, 0.861f, 0.792f, 0.723f, 0.653f,
@@ -18,6 +35,11 @@ public class MeshRender : IDisposable
         0.168f, 0.0f
     ];
 
+    /// <summary>
+    /// RGB-цвета (0..1), соответствующие каждому элементу <see cref="_normalizedCoefficients"/>.
+    /// Вместе образуют палитру «марсианского» рельефа: светлые тона на возвышенностях, тёмно-коричневые в низинах.
+    /// Порядок элементов должен совпадать с <see cref="_normalizedCoefficients"/>.
+    /// </summary>
     private readonly List<(float r, float g, float b)> _colors =
     [
         (0.863f, 0.863f, 0.863f),
@@ -36,13 +58,18 @@ public class MeshRender : IDisposable
         (0.553f, 0.329f, 0.169f)
     ];
 
+    /// <summary>VAO/VBO с полным набором вершин heightmap для привязки атрибутов position + height.</summary>
     private int _vao;
     private int _vbo;
 
+    /// <summary>Геометрический центр модели (середина AABB). Используется для осей координат и навигации камеры.</summary>
     public Vector3 ModelCenter { get; private set; }
+
+    /// <summary>Минимальная и максимальная точки axis-aligned bounding box всего меша.</summary>
     public Vector3 Min { get; private set; }
     public Vector3 Max { get; private set; }
 
+    /// <summary>Компоненты AABB по осям — нужны для расчёта абсолютных высот в <see cref="CalculateHeights"/>.</summary>
     public float MinX { get; private set; }
     public float MaxX { get; private set; }
     public float MinY { get; private set; }
@@ -50,6 +77,10 @@ public class MeshRender : IDisposable
     public float MinZ { get; private set; }
     public float MaxZ { get; private set; }
 
+    /// <summary>
+    /// Создаёт рендерер heightmap-меша: вычисляет границы модели, разбивает её на чанки,
+    /// инициализирует GPU-буферы и загружает шейдер раскраски по высоте.
+    /// </summary>
     public MeshRender(MapData mapData)
     {
         _mapData = mapData;
@@ -62,6 +93,9 @@ public class MeshRender : IDisposable
         _shader = CreateShader();
     }
 
+    /// <summary>
+    /// Создаёт VAO и VBO с полным набором вершин heightmap и настраивает атрибуты position (location 0) и height (location 1).
+    /// </summary>
     private void InitializeBuffers()
     {
         _vao = GL.GenVertexArray();
@@ -82,6 +116,9 @@ public class MeshRender : IDisposable
         GL.EnableVertexAttribArray(1);
     }
 
+    /// <summary>
+    /// Создаёт EBO для каждого чанка и загружает в GPU индексы треугольников чанка.
+    /// </summary>
     private void InitializeChunkBuffers()
     {
         foreach (var chunk in _chunkManager.Chunks)
@@ -96,6 +133,9 @@ public class MeshRender : IDisposable
         }
     }
 
+    /// <summary>
+    /// Компилирует vertex/fragment шейдеры раскраски по высоте и передаёт в uniform массивы опорных высот и цветов.
+    /// </summary>
     private Shader CreateShader()
     {
         const string vertexShaderSource = """
@@ -152,6 +192,9 @@ public class MeshRender : IDisposable
         return shader;
     }
 
+    /// <summary>
+    /// Записывает в шейдер uniform-массивы heights и colors из словаря «высота → RGB».
+    /// </summary>
     private void SetHeightColorData(Shader shader, Dictionary<int, (float r, float g, float b)> heightColorMap)
     {
         var heights = new List<float>();
@@ -169,6 +212,11 @@ public class MeshRender : IDisposable
         shader.SetArray3("colors", colors.ToArray());
     }
 
+    /// <summary>
+    /// Переводит нормализованные коэффициенты в абсолютные высоты [minHeight..maxHeight]
+    /// и сопоставляет каждой опорной высоте цвет из палитры.
+    /// Результат передаётся во fragment shader как uniform-массивы heights/colors.
+    /// </summary>
     public Dictionary<int, (float r, float g, float b)> CalculateHeights(float minHeight, float maxHeight)
     {
         if (maxHeight == minHeight)
@@ -188,6 +236,9 @@ public class MeshRender : IDisposable
         return heightColorMap;
     }
 
+    /// <summary>
+    /// Извлекает подмножество вершин heightmap, принадлежащее заданному прямоугольному чанку сетки.
+    /// </summary>
     private List<Vector4> GetVerticesForChunk(int startRow, int startCol, int chunkRows, int chunkCols)
     {
         List<Vector4> chunkVertices = new();
@@ -207,6 +258,9 @@ public class MeshRender : IDisposable
         return chunkVertices;
     }
 
+    /// <summary>
+    /// Строит индексы двух треугольников на ячейку для чанка heightmap (топология regular grid).
+    /// </summary>
     private List<int> GenerateHeightMapIndicesForChunk(int startRow, int startCol, int chunkRows, int chunkCols)
     {
         List<int> indices = new();
@@ -239,6 +293,10 @@ public class MeshRender : IDisposable
         return indices;
     }
 
+    /// <summary>
+    /// Проходит по всем вершинам heightmap, вычисляет AABB модели и его центр.
+    /// MinY/MaxY определяют диапазон высот для цветовой шкалы; ModelCenter — точка привязки осей.
+    /// </summary>
     private Vector3 CalculateModelCenter()
     {
         MinX = float.MaxValue;
@@ -265,6 +323,10 @@ public class MeshRender : IDisposable
         return (Min + Max) * 0.5f;
     }
 
+    /// <summary>
+    /// Делит heightmap на квадратные чанки <see cref="ChunkSize"/>×<see cref="ChunkSize"/> для frustum culling:
+    /// отрисовываются только чанки, попадающие в поле зрения камеры.
+    /// </summary>
     private void SplitModelIntoChunks(int chunkSize)
     {
         for (int row = 0; row < _mapData.Rows; row += chunkSize)
@@ -283,6 +345,9 @@ public class MeshRender : IDisposable
         }
     }
 
+    /// <summary>
+    /// Отрисовывает видимые по frustum чанки меша с заданными матрицами view, projection и model.
+    /// </summary>
     public void DrawMesh(Matrix4 view, Matrix4 projection, Matrix4 model, Vector3 cameraPosition, Frustum frustum)
     {
         _shader.Use();
@@ -299,6 +364,9 @@ public class MeshRender : IDisposable
         }
     }
 
+    /// <summary>
+    /// Освобождает GPU-ресурсы: EBO чанков, VAO и VBO вершин.
+    /// </summary>
     public void Dispose()
     {
         foreach (var chunk in _chunkManager.Chunks)

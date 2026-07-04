@@ -9,6 +9,9 @@ using static OpenTK.Graphics.OpenGL.GL;
 
 namespace Mars
 {
+    /// <summary>
+    /// Отрисовка осей координат X/Y/Z с делениями (ticks) в центре модели.
+    /// </summary>
     public class AxisRender
     {
         private int _vao;
@@ -16,6 +19,9 @@ namespace Mars
         private Shader _shader;
         float[] axisVertices;
 
+        /// <summary>
+        /// Создаёт геометрию осей с делениями, буферы OpenGL и шейдер с per-vertex цветом.
+        /// </summary>
         public AxisRender(float length, float tickSize, float tickSpacing, Vector3 offset)
         {
             // Генерация данных для осей
@@ -66,6 +72,9 @@ namespace Mars
             _shader = new Shader(axisVertexShaderSource, axisFragmentShaderSource, ShaderSourceMode.Code);
         }
 
+        /// <summary>
+        /// Формирует массив вершин (позиция + RGB) для трёх осей с периодическими делениями.
+        /// </summary>
         public float[] GenerateAxisWithTicks(float length, float tickSize, float tickSpacing, Vector3 offset)
         {
             List<float> vertices = new List<float>();
@@ -118,6 +127,7 @@ namespace Mars
             return vertices.ToArray();
         }
 
+        /// <summary>Рисует оси линиями с переданными view и projection.</summary>
         public void DrawAxis(Matrix4 view, Matrix4 projection)
         {
             // Рисуем оси с отдельным шейдером
@@ -141,6 +151,7 @@ namespace Mars
             //GL.BindVertexArray(0);
         }
 
+        /// <summary>Удаляет VAO и VBO из OpenGL.</summary>
         public void Dispose()
         {
             if (_vao != 0) GL.DeleteVertexArray(_vao);

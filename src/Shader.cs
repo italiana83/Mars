@@ -11,15 +11,23 @@ using System.Reflection.Metadata;
 
 namespace Mars
 {
+    /// <summary>Источник GLSL-кода: файл на диске или строка в памяти.</summary>
     public enum ShaderSourceMode
     {
         File = 0,
         Code = 1
     }
+
+    /// <summary>
+    /// OpenGL shader program: компиляция vertex/fragment stages и установка uniform-переменных.
+    /// </summary>
     public class Shader
     {
         private readonly int _handle;
 
+        /// <summary>
+        /// Компилирует и связывает шейдеры; при <see cref="ShaderSourceMode.File"/> читает исходники с диска.
+        /// </summary>
         public Shader(string vertexSource, string fragmentSource, ShaderSourceMode mode)
         {
             if (mode == ShaderSourceMode.File)
@@ -52,6 +60,7 @@ namespace Mars
             GL.DeleteShader(fragmentShader);
         }
 
+        /// <summary>Компилирует один шейдерный stage (vertex или fragment).</summary>
         private int CompileShader(ShaderType type, string source)
         {
             // Создаем шейдер
@@ -70,11 +79,13 @@ namespace Mars
             return shader;
         }
 
+        /// <summary>Активирует эту shader program для последующих draw calls.</summary>
         public void Use()
         {
             GL.UseProgram(_handle);
         }
 
+        /// <summary>Передаёт mat4 uniform в активную программу.</summary>
         public void SetMatrix4(string name, Matrix4 matrix)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -84,6 +95,7 @@ namespace Mars
             GL.UniformMatrix4(location, false, ref matrix);
         }
 
+        /// <summary>Передаёт vec2 uniform в активную программу.</summary>
         public void SetVector2(string name, Vector2 vector)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -93,6 +105,7 @@ namespace Mars
             GL.Uniform2(location, vector);
         }
 
+        /// <summary>Передаёт vec3 uniform в активную программу.</summary>
         public void SetVector3(string name, Vector3 value)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -102,6 +115,7 @@ namespace Mars
             GL.Uniform3(location, value);
         }
 
+        /// <summary>Передаёт vec4 uniform в активную программу.</summary>
         public void SetVector4(string name, Vector4 value)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -111,6 +125,7 @@ namespace Mars
             GL.Uniform4(location, value);
         }
 
+        /// <summary>Передаёт массив float uniform (например, heights[]) в активную программу.</summary>
         public void SetArray1(string name, float[] array)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -120,6 +135,7 @@ namespace Mars
             GL.Uniform1(location, array.Length, array);
         }
 
+        /// <summary>Передаёт массив vec3 uniform (например, colors[]) в активную программу.</summary>
         public void SetArray3(string name, float[] array)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -129,6 +145,7 @@ namespace Mars
             GL.Uniform3(location, array.Length / 3, array);
         }
 
+        /// <summary>Передаёт int uniform в активную программу.</summary>
         public void SetInt(string name, int value)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -138,6 +155,7 @@ namespace Mars
             GL.Uniform1(location, value);
         }
 
+        /// <summary>Передаёт float uniform в активную программу.</summary>
         public void SetFloat(string name, float value)
         {
             int location = GL.GetUniformLocation(_handle, name);
@@ -147,6 +165,9 @@ namespace Mars
             GL.Uniform1(location, value);
         }
 
+        /// <summary>
+        /// Возвращает location vertex-атрибута; при отсутствии пишет предупреждение в консоль.
+        /// </summary>
         public int GetAttribLocation(string attribName)
         {
             int location = GL.GetAttribLocation(_handle, attribName);
@@ -157,6 +178,7 @@ namespace Mars
             return location;
         }
 
+        /// <summary>Освобождает GPU-ресурс shader program при сборке мусора.</summary>
         ~Shader()
         {
             GL.DeleteProgram(_handle);

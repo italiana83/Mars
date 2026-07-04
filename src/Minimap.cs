@@ -5,6 +5,10 @@ using System.Reflection;
 
 namespace Mars;
 
+/// <summary>
+/// Мини-карта в sci-fi панели: растровое изображение с диска внутри chamfer-рамки
+/// с cyan-свечением; размер панели — половина экрана, позиция через <see cref="SetPanelOrigin"/>.
+/// </summary>
 public sealed class Minimap : IDisposable
 {
     private const float Margin = 12f;
@@ -47,10 +51,15 @@ public sealed class Minimap : IDisposable
         0f, 0f,  0f, 0f
     };
 
+    /// <summary>Задаёт левый верхний угол панели мини-карты в экранных координатах.</summary>
     public void SetPanelOrigin(Vector2 origin) => _panelOrigin = origin;
 
     public float PanelHeight => _screenH * 0.5f;
 
+    /// <summary>
+    /// Загружает текстуру с диска, создаёт буферы для quad и полигонов, шейдеры и UBO ортографии
+    /// под заданные размеры framebuffer и масштаб UI.
+    /// </summary>
     public Minimap(string imagePath, int w, int h, float scaleY = 1f)
     {
         _screenW = w;
@@ -65,6 +74,7 @@ public sealed class Minimap : IDisposable
         UpdateOrtho();
     }
 
+    /// <summary>Обновляет размеры экрана, масштаб UI и пересчитывает ортографическую проекцию.</summary>
     public void UpdateScreenSize(int w, int h, float scaleY = 1f)
     {
         _screenW = w;
@@ -73,6 +83,10 @@ public sealed class Minimap : IDisposable
         UpdateOrtho();
     }
 
+    /// <summary>
+    /// При <see cref="IsVisible"/> рисует sci-fi панель с текстурой мини-карты поверх сцены;
+    /// сохраняет и восстанавливает polygon mode, depth test и blend.
+    /// </summary>
     public void Render(float dt)
     {
         if (!IsVisible)
@@ -93,6 +107,7 @@ public sealed class Minimap : IDisposable
         GL.PolygonMode(MaterialFace.FrontAndBack, (PolygonMode)polygonMode[0]);
     }
 
+    /// <summary>Возвращает true, если мини-карта видима и клик попал в область панели.</summary>
     public bool HandleMouseDown(float mouseX, float mouseY)
     {
         if (!IsVisible)
@@ -101,11 +116,13 @@ public sealed class Minimap : IDisposable
         return GetPanelRect().Contains(mouseX, mouseY);
     }
 
+    /// <summary>Прямоугольник панели: 50% ширины и высоты экрана от <see cref="_panelOrigin"/>.</summary>
     public RectangleF GetPanelRect()
     {
         return new RectangleF(_panelOrigin.X, _panelOrigin.Y, _screenW * 0.5f, _screenH * 0.5f);
     }
 
+    /// <summary>Рисует sci-fi рамку и текстурированный quad изображения с отступами в миллиметрах UI.</summary>
     private void RenderPanel()
     {
         var size = new Vector2(_screenW * 0.5f, _screenH * 0.5f);
@@ -132,6 +149,7 @@ public sealed class Minimap : IDisposable
         GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
     }
 
+    /// <summary>Строит chamfer-полигон панели, рисует свечение, заливку и cyan-контур.</summary>
     private void DrawSciFiPanel(Vector2 pos, Vector2 size, Vector4 fill)
     {
         var poly = BuildPanelPolygon(size, Chamfer);
@@ -141,6 +159,7 @@ public sealed class Minimap : IDisposable
         DrawPolygonOutline(poly, CyanBorder, OutlineWidth, pos.Y);
     }
 
+    /// <summary>Два слоя масштабированного полигона для эффекта внешнего и внутреннего cyan-свечения.</summary>
     private void DrawPolygonGlow(List<Vector2> poly)
     {
         var center = Centroid(poly);
@@ -148,6 +167,7 @@ public sealed class Minimap : IDisposable
         DrawFilledPolygon(ScalePolygon(poly, center, 1.008f), CyanGlowInner);
     }
 
+    /// <summary>Строит пятиточечный полигон панели с фаской в правом верхнем углу.</summary>
     private static List<Vector2> BuildPanelPolygon(Vector2 size, float chamfer)
     {
         float w = size.X;
@@ -164,12 +184,14 @@ public sealed class Minimap : IDisposable
         };
     }
 
+    /// <summary>Сдвигает все вершины полигона на заданный вектор смещения.</summary>
     private static void Offset(List<Vector2> poly, Vector2 offset)
     {
         for (int i = 0; i < poly.Count; i++)
             poly[i] += offset;
     }
 
+    /// <summary>Вычисляет центроид полигона как среднее арифметическое его вершин.</summary>
     private static Vector2 Centroid(List<Vector2> poly)
     {
         float x = 0, y = 0;
@@ -182,6 +204,7 @@ public sealed class Minimap : IDisposable
         return new Vector2(x / poly.Count, y / poly.Count);
     }
 
+    /// <summary>Масштабирует полигон относительно центра на коэффициент <paramref name="scale"/>.</summary>
     private static List<Vector2> ScalePolygon(List<Vector2> poly, Vector2 center, float scale)
     {
         var result = new List<Vector2>(poly.Count);
@@ -190,6 +213,7 @@ public sealed class Minimap : IDisposable
         return result;
     }
 
+    /// <summary>Триангулирует полигон веером и заливает его указанным цветом.</summary>
     private void DrawFilledPolygon(List<Vector2> poly, Vector4 color)
     {
         if (poly.Count < 3)
@@ -198,6 +222,7 @@ public sealed class Minimap : IDisposable
         UploadAndDraw(TriangulateFan(poly), color);
     }
 
+    /// <summary>Разбивает выпуклый полигон на треугольники веером от первой вершины.</summary>
     private static List<Vector2> TriangulateFan(List<Vector2> poly)
     {
         var tris = new List<Vector2>();
@@ -211,6 +236,7 @@ public sealed class Minimap : IDisposable
         return tris;
     }
 
+    /// <summary>Рисует контур полигона ребрами как утолщённые линии заданной ширины.</summary>
     private void DrawPolygonOutline(List<Vector2> poly, Vector4 color, float width, float minY)
     {
         for (int i = 0; i < poly.Count; i++)
@@ -221,6 +247,7 @@ public sealed class Minimap : IDisposable
         }
     }
 
+    /// <summary>Рисует отрезок quad'ом с толщиной; Y вершин не опускается ниже <paramref name="minY"/>.</summary>
     private void DrawLine(Vector2 a, Vector2 b, Vector4 color, float width, float minY)
     {
         var dir = b - a;
@@ -246,8 +273,10 @@ public sealed class Minimap : IDisposable
         }, color);
     }
 
+    /// <summary>Ограничивает Y-координату точки снизу значением <paramref name="minY"/>.</summary>
     private static Vector2 ClampY(Vector2 p, float minY) => new(p.X, Math.Max(p.Y, minY));
 
+    /// <summary>Загружает 2D-вершины в динамический VBO и рисует их треугольниками с uniform-цветом.</summary>
     private void UploadAndDraw(List<Vector2> vertices, Vector4 color)
     {
         if (vertices.Count == 0)
@@ -269,6 +298,10 @@ public sealed class Minimap : IDisposable
         GL.DrawArrays(PrimitiveType.Triangles, 0, vertices.Count);
     }
 
+    /// <summary>
+    /// Загружает изображение через <see cref="ImageGDI.LoadFromDisk"/> (поворот 180°, без flip)
+    /// и сохраняет OpenGL handle текстуры в <see cref="_textureId"/>.
+    /// </summary>
     private void LoadTexture(string path)
     {
         ImageGDI.LoadFromDisk(
@@ -282,6 +315,7 @@ public sealed class Minimap : IDisposable
         _textureId = (int)handle;
     }
 
+    /// <summary>Создаёт VAO/VBO для текстурированного quad (position + UV, 4 float на вершину).</summary>
     private void InitTexBuffers()
     {
         _vaoTex = GL.GenVertexArray();
@@ -297,6 +331,7 @@ public sealed class Minimap : IDisposable
         GL.BindVertexArray(0);
     }
 
+    /// <summary>Создаёт VAO/VBO для 2D-полигонов рамки панели (position, 2 float на вершину).</summary>
     private void InitPolyBuffers()
     {
         _vaoPoly = GL.GenVertexArray();
@@ -309,6 +344,7 @@ public sealed class Minimap : IDisposable
         GL.BindVertexArray(0);
     }
 
+    /// <summary>Создаёт texture и color шейдеры и привязывает к обоим UBO ортографии.</summary>
     private void InitShaders()
     {
         _textureShader = new Shader(VertexTex, FragmentTex, ShaderSourceMode.Code);
@@ -317,6 +353,7 @@ public sealed class Minimap : IDisposable
         BindUbo(_colorShader);
     }
 
+    /// <summary>Выделяет uniform buffer для ортографической матрицы и привязывает к binding point 0.</summary>
     private void InitUbo()
     {
         _uboOrtho = GL.GenBuffer();
@@ -325,6 +362,7 @@ public sealed class Minimap : IDisposable
         GL.BindBufferBase(BufferRangeTarget.UniformBuffer, 0, _uboOrtho);
     }
 
+    /// <summary>Привязывает uniform block «Ortho» шейдера к тому же binding point, что и UBO экрана.</summary>
     private static void BindUbo(Shader shader)
     {
         int program = (int)typeof(Shader)
@@ -336,6 +374,7 @@ public sealed class Minimap : IDisposable
             GL.UniformBlockBinding(program, index, 0);
     }
 
+    /// <summary>Пересчитывает ортографию экрана и записывает матрицу в UBO.</summary>
     private void UpdateOrtho()
     {
         _ortho = Matrix4.CreateOrthographicOffCenter(0, _screenW, _screenH, 0, -1, 1);
@@ -343,6 +382,7 @@ public sealed class Minimap : IDisposable
         GL.BufferSubData(BufferTarget.UniformBuffer, IntPtr.Zero, 64, ref _ortho);
     }
 
+    /// <summary>Освобождает VAO/VBO quad и полигонов, UBO ортографии и OpenGL-текстуру.</summary>
     public void Dispose()
     {
         GL.DeleteBuffer(_vboTex);

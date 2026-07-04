@@ -10,10 +10,14 @@ namespace Mars
     using OpenTK.Mathematics;
     //using System.Numerics;
 
+    /// <summary>
+    /// Пирамида видимости камеры: шесть плоскостей и проверка пересечения с AABB.
+    /// </summary>
     public class Frustum
     {
         private Plane[] _planes;
 
+        /// <summary>Инициализирует массив из шести плоскостей фрустума.</summary>
         public Frustum()
         {
             _planes = new Plane[6];
@@ -90,12 +94,14 @@ namespace Mars
         public Vector3 Normal;
         public float Distance;
 
+        /// <summary>Создаёт плоскость из коэффициентов уравнения Ax+By+Cz+D=0 (Vector4).</summary>
         public Plane(Vector4 coefficients)
         {
             Normal = new Vector3(coefficients.X, coefficients.Y, coefficients.Z);
             Distance = coefficients.W;
         }
 
+        /// <summary>Нормализует нормаль и расстояние плоскости до единичной длины.</summary>
         public void Normalize()
         {
             float length = Normal.Length;
@@ -103,17 +109,23 @@ namespace Mars
             Distance /= length;
         }
 
+        /// <summary>
+        /// Возвращает знаковое расстояние от точки до плоскости
+        /// (положительное — «перед» плоскостью по направлению нормали).
+        /// </summary>
         public float DistanceTo(Vector3 point)
         {
             return Vector3.Dot(Normal, point) + Distance;
         }
     }
 
+    /// <summary>Axis-aligned bounding box: минимальная и максимальная вершины параллелепипеда.</summary>
     public struct BoundingBox
     {
         public Vector3 Min;
         public Vector3 Max;
 
+        /// <summary>Создаёт AABB по минимальной и максимальной точкам.</summary>
         public BoundingBox(Vector3 min, Vector3 max)
         {
             Min = min;

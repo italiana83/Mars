@@ -5,9 +5,17 @@ using System.Diagnostics;
 
 namespace Mars
 {
+    /// <summary>
+    /// Загрузка растровых изображений с диска через SkiaSharp и создание OpenGL-текстур
+    /// (1D/2D) с опциональным отражением, поворотом и настройкой параметров сэмплирования.
+    /// </summary>
     public class ImageGDI
     {
 
+        /// <summary>
+        /// Декодирует изображение из файла, при необходимости отражает и поворачивает его,
+        /// загружает пиксели в новую OpenGL-текстуру и возвращает handle, тип текстуры и размеры.
+        /// </summary>
         public static void LoadFromDisk(string filename, TextureLoaderParameters parameters, out uint texturehandle,
             out TextureTarget dimension, out int Width, out int Height)
         {
@@ -184,6 +192,10 @@ namespace Mars
             }
         }
 
+        /// <summary>
+        /// Декодирует изображение из файла, применяет преобразования из <paramref name="parameters"/>,
+        /// создаёт OpenGL-текстуру с фильтрами и wrap-режимами из parameters; размеры не возвращает.
+        /// </summary>
         public static void LoadFromDisk(string filename, TextureLoaderParameters parameters, out uint texturehandle, out TextureTarget dimension)
         {
             dimension = (OpenTK.Graphics.OpenGL.TextureTarget)0;

@@ -5,6 +5,10 @@ using System.Reflection;
 
 namespace Mars;
 
+/// <summary>
+/// Полупрозрачная sci-fi панель-оверлей без содержимого: chamfer-рамка с cyan-свечением
+/// и контуром; занимает половину экрана, позиция задаётся через <see cref="SetPanelOrigin"/>.
+/// </summary>
 public sealed class SciFiPanelOverlay : IDisposable
 {
     private const float Chamfer = 10f;
@@ -25,8 +29,13 @@ public sealed class SciFiPanelOverlay : IDisposable
     private Shader _colorShader;
     private Matrix4 _ortho;
 
+    /// <summary>Задаёт левый верхний угол панели в экранных координатах (origin для отрисовки и hit-test).</summary>
     public void SetPanelOrigin(Vector2 origin) => _panelOrigin = origin;
 
+    /// <summary>
+    /// Инициализирует GL-буферы для векторных полигонов, color shader, UBO ортографии
+    /// и проекцию под заданные размеры framebuffer.
+    /// </summary>
     public SciFiPanelOverlay(int w, int h)
     {
         _screenW = w;
@@ -37,6 +46,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         UpdateOrtho();
     }
 
+    /// <summary>Обновляет размеры экрана и пересчитывает ортографическую матрицу в UBO.</summary>
     public void UpdateScreenSize(int w, int h)
     {
         _screenW = w;
@@ -44,6 +54,10 @@ public sealed class SciFiPanelOverlay : IDisposable
         UpdateOrtho();
     }
 
+    /// <summary>
+    /// При <see cref="IsVisible"/> рисует sci-fi панель поверх 3D-сцены
+    /// с отключённым depth test и альфа-блендингом; восстанавливает GL-состояние после отрисовки.
+    /// </summary>
     public void Render()
     {
         if (!IsVisible)
@@ -65,12 +79,15 @@ public sealed class SciFiPanelOverlay : IDisposable
         GL.PolygonMode(MaterialFace.FrontAndBack, (PolygonMode)polygonMode[0]);
     }
 
+    /// <summary>Возвращает true, если панель видима и точка клика попадает в её прямоугольник.</summary>
     public bool HandleMouseDown(float mouseX, float mouseY) =>
         IsVisible && GetPanelRect().Contains(mouseX, mouseY);
 
+    /// <summary>Прямоугольник панели: 50% ширины и высоты экрана от <see cref="_panelOrigin"/>.</summary>
     public RectangleF GetPanelRect() =>
         new(_panelOrigin.X, _panelOrigin.Y, _screenW * 0.5f, _screenH * 0.5f);
 
+    /// <summary>Строит chamfer-полигон панели, рисует свечение, заливку и cyan-контур.</summary>
     private void DrawSciFiPanel(Vector2 pos, Vector2 size, Vector4 fill)
     {
         var poly = BuildPanelPolygon(size, Chamfer);
@@ -80,6 +97,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         DrawPolygonOutline(poly, CyanBorder, OutlineWidth, pos.Y);
     }
 
+    /// <summary>Два слоя масштабированного полигона (1.02× и 1.008×) для эффекта внешнего и внутреннего свечения.</summary>
     private void DrawPolygonGlow(List<Vector2> poly)
     {
         var center = Centroid(poly);
@@ -87,6 +105,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         DrawFilledPolygon(ScalePolygon(poly, center, 1.008f), CyanGlowInner);
     }
 
+    /// <summary>Строит пятиточечный полигон панели с фаской (chamfer) в правом верхнем углу.</summary>
     private static List<Vector2> BuildPanelPolygon(Vector2 size, float chamfer)
     {
         float w = size.X;
@@ -103,12 +122,14 @@ public sealed class SciFiPanelOverlay : IDisposable
         };
     }
 
+    /// <summary>Сдвигает все вершины полигона на заданный вектор смещения.</summary>
     private static void Offset(List<Vector2> poly, Vector2 offset)
     {
         for (int i = 0; i < poly.Count; i++)
             poly[i] += offset;
     }
 
+    /// <summary>Вычисляет центроид полигона как среднее арифметическое его вершин.</summary>
     private static Vector2 Centroid(List<Vector2> poly)
     {
         float x = 0, y = 0;
@@ -121,6 +142,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         return new Vector2(x / poly.Count, y / poly.Count);
     }
 
+    /// <summary>Масштабирует полигон относительно центра на коэффициент <paramref name="scale"/>.</summary>
     private static List<Vector2> ScalePolygon(List<Vector2> poly, Vector2 center, float scale)
     {
         var result = new List<Vector2>(poly.Count);
@@ -129,6 +151,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         return result;
     }
 
+    /// <summary>Триангулирует полигон веером и заливает его указанным цветом через color shader.</summary>
     private void DrawFilledPolygon(List<Vector2> poly, Vector4 color)
     {
         if (poly.Count < 3)
@@ -137,6 +160,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         UploadAndDraw(TriangulateFan(poly), color);
     }
 
+    /// <summary>Разбивает выпуклый полигон на треугольники веером от первой вершины.</summary>
     private static List<Vector2> TriangulateFan(List<Vector2> poly)
     {
         var tris = new List<Vector2>();
@@ -150,6 +174,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         return tris;
     }
 
+    /// <summary>Рисует контур полигона ребрами как утолщённые линии заданной ширины.</summary>
     private void DrawPolygonOutline(List<Vector2> poly, Vector4 color, float width, float minY)
     {
         for (int i = 0; i < poly.Count; i++)
@@ -160,6 +185,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         }
     }
 
+    /// <summary>Рисует отрезок quad'ом с толщиной <paramref name="width"/>; Y вершин не опускается ниже <paramref name="minY"/>.</summary>
     private void DrawLine(Vector2 a, Vector2 b, Vector4 color, float width, float minY)
     {
         var dir = b - a;
@@ -185,8 +211,10 @@ public sealed class SciFiPanelOverlay : IDisposable
         }, color);
     }
 
+    /// <summary>Ограничивает Y-координату точки снизу значением <paramref name="minY"/>.</summary>
     private static Vector2 ClampY(Vector2 p, float minY) => new(p.X, Math.Max(p.Y, minY));
 
+    /// <summary>Загружает 2D-вершины в динамический VBO и рисует их треугольниками с uniform-цветом.</summary>
     private void UploadAndDraw(List<Vector2> vertices, Vector4 color)
     {
         if (vertices.Count == 0)
@@ -208,6 +236,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         GL.DrawArrays(PrimitiveType.Triangles, 0, vertices.Count);
     }
 
+    /// <summary>Создаёт VAO/VBO для 2D-полигонов панели (атрибут position, 2 float на вершину).</summary>
     private void InitPolyBuffers()
     {
         _vaoPoly = GL.GenVertexArray();
@@ -220,12 +249,14 @@ public sealed class SciFiPanelOverlay : IDisposable
         GL.BindVertexArray(0);
     }
 
+    /// <summary>Создаёт color shader для заливки полигонов и привязывает к нему UBO ортографии.</summary>
     private void InitShaders()
     {
         _colorShader = new Shader(VertexColor, FragmentColor, ShaderSourceMode.Code);
         BindUbo(_colorShader);
     }
 
+    /// <summary>Выделяет uniform buffer для ортографической матрицы и привязывает к binding point 0.</summary>
     private void InitUbo()
     {
         _uboOrtho = GL.GenBuffer();
@@ -234,6 +265,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         GL.BindBufferBase(BufferRangeTarget.UniformBuffer, 0, _uboOrtho);
     }
 
+    /// <summary>Привязывает uniform block «Ortho» шейдера к тому же binding point, что и UBO экрана.</summary>
     private static void BindUbo(Shader shader)
     {
         int program = (int)typeof(Shader)
@@ -245,6 +277,7 @@ public sealed class SciFiPanelOverlay : IDisposable
             GL.UniformBlockBinding(program, index, 0);
     }
 
+    /// <summary>Пересчитывает ортографию экрана (0..W, 0..H, Y вниз) и записывает матрицу в UBO.</summary>
     private void UpdateOrtho()
     {
         _ortho = Matrix4.CreateOrthographicOffCenter(0, _screenW, _screenH, 0, -1, 1);
@@ -252,6 +285,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         GL.BufferSubData(BufferTarget.UniformBuffer, IntPtr.Zero, 64, ref _ortho);
     }
 
+    /// <summary>Освобождает VAO, VBO полигонов и UBO ортографии.</summary>
     public void Dispose()
     {
         GL.DeleteBuffer(_vboPoly);

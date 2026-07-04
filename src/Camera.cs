@@ -7,6 +7,9 @@ using System.Threading.Tasks;
 
 namespace Mars
 {
+    /// <summary>
+    /// Камера от первого лица: позиция, ориентация по yaw/pitch и управление WASD + мышь.
+    /// </summary>
     public class Camera
     {
         /// <summary>
@@ -31,12 +34,14 @@ namespace Mars
         /// </summary>
         public float MouseSensitivity { get; private set; } = 0.002f;
 
+        /// <summary>Создаёт камеру с заданной скоростью перемещения и чувствительностью мыши.</summary>
         public Camera(float moveSpeed, float mouseSensitivity)
         {
             MoveSpeed = moveSpeed;
             MouseSensitivity = mouseSensitivity;
         }
 
+        /// <summary>Строит матрицу вида LookAt из текущей позиции и углов ориентации.</summary>
         public Matrix4 GetViewMatrix()
         {
             Vector3 lookat = new Vector3();
@@ -48,6 +53,9 @@ namespace Mars
             return Matrix4.LookAt(Position, Position + lookat, Vector3.UnitY);
         }
 
+        /// <summary>
+        /// Смещает камеру по локальным осям: x — вправо/влево, y — вперёд/назад, z — вверх/вниз.
+        /// </summary>
         public void Move(float x, float y, float z)
         {
             Vector3 offset = new Vector3();
@@ -65,6 +73,7 @@ namespace Mars
             Position += offset;
         }
 
+        /// <summary>Добавляет поворот по горизонтали и вертикали с ограничением угла pitch.</summary>
         public void AddRotation(float x, float y)
         {
             x = x * MouseSensitivity;
@@ -74,6 +83,7 @@ namespace Mars
             Orientation.Y = Math.Max(Math.Min(Orientation.Y + y, (float)Math.PI / 2.0f - 0.1f), (float)-Math.PI / 2.0f + 0.1f);
         }
 
+        /// <summary>Строковое представление позиции и ориентации для отладки.</summary>
         public override string ToString()
         {
             return $"Position: {Position}       Orientation: {Orientation}";

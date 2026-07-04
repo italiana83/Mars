@@ -4,6 +4,9 @@ using SkiaSharp;
 
 namespace Mars;
 
+/// <summary>
+/// Рендеринг текста через SkiaSharp (растрализация глифов) и OpenGL (отрисовка квадов с альфа-текстурой).
+/// </summary>
 public class TextRenderer : IDisposable
 {
     private readonly int _vao, _vbo;
@@ -16,6 +19,9 @@ public class TextRenderer : IDisposable
 
     public float LineHeight => _ascent + _descent;
 
+    /// <summary>
+    /// Измеряет высоту ограничивающего прямоугольника строки при текущем размере шрифта.
+    /// </summary>
     public float MeasureTextHeight(string text)
     {
         using var font = new SKFont(_typeface, _fontSize) { Edging = SKFontEdging.Antialias };
@@ -23,6 +29,9 @@ public class TextRenderer : IDisposable
         return bounds.Height;
     }
 
+    /// <summary>
+    /// Рисует текст, задавая верхнюю границу строки (topY); внутренне переводит координаты в baseline для <see cref="RenderText"/>.
+    /// </summary>
     public void RenderTextFromTop(string text, float x, float topY, float scale, Vector3 color)
     {
         using var font = new SKFont(_typeface, _fontSize) { Edging = SKFontEdging.Antialias };
@@ -39,6 +48,9 @@ public class TextRenderer : IDisposable
         public float Advance;
     }
 
+    /// <summary>
+    /// Ищет в системной папке Fonts подходящий TTF (Segoe UI, Arial, Calibri, Tahoma).
+    /// </summary>
     public static string ResolveSystemFont()
     {
         var fontsDir = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
@@ -52,6 +64,9 @@ public class TextRenderer : IDisposable
         throw new FileNotFoundException("No suitable UI font found in system fonts folder.");
     }
 
+    /// <summary>
+    /// Загружает шрифт, создаёт VAO/VBO для квадов, компилирует text shader и задаёт orthographic projection под размер экрана.
+    /// </summary>
     public TextRenderer(string fontPath, int screenWidth, int screenHeight, float fontSize = 24f)
     {
         _typeface = SKTypeface.FromFile(fontPath) ?? SKTypeface.FromFamilyName("Segoe UI") ?? SKTypeface.Default;
@@ -104,6 +119,9 @@ void main()
         UpdateScreenSize(screenWidth, screenHeight);
     }
 
+    /// <summary>
+    /// Ленивая подгрузка текстур глифов для всех code point строки, ещё не встречавшихся в кэше.
+    /// </summary>
     public void EnsureGlyphs(string text)
     {
         foreach (var rune in text.EnumerateRunes())
@@ -114,6 +132,9 @@ void main()
         }
     }
 
+    /// <summary>
+    /// Обновляет orthographic projection шейдера при изменении размеров окна или фреймбуфера.
+    /// </summary>
     public void UpdateScreenSize(int width, int height)
     {
         var projection = Matrix4.CreateOrthographicOffCenter(0, width, height, 0, -1f, 1f);
@@ -121,6 +142,9 @@ void main()
         _textShader.SetMatrix4("projection", projection);
     }
 
+    /// <summary>
+    /// Отрисовывает строку текста в экранных координатах с масштабом и цветом; глифы выводятся квадами с альфа-текстурой.
+    /// </summary>
     public void RenderText(string text, float x, float y, float scale, Vector3 color)
     {
         EnsureGlyphs(text);
@@ -167,6 +191,9 @@ void main()
         GL.BindTexture(TextureTarget.Texture2D, 0);
     }
 
+    /// <summary>
+    /// Растеризует один глиф через SkiaSharp, создаёт R8 OpenGL-текстуру и сохраняет метрики в кэше символов.
+    /// </summary>
     private void LoadGlyph(int codepoint)
     {
         if (_characters.ContainsKey(codepoint))
@@ -220,6 +247,9 @@ void main()
         };
     }
 
+    /// <summary>
+    /// Удаляет текстуры глифов, VBO/VAO и освобождает Skia typeface.
+    /// </summary>
     public void Dispose()
     {
         foreach (var ch in _characters.Values)

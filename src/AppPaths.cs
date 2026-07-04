@@ -1,13 +1,22 @@
 namespace Mars;
 
+/// <summary>
+/// Пути к корню проекта и каталогу data с файлами MOLA и мини-картой.
+/// </summary>
 public static class AppPaths
 {
+    /// <summary>Абсолютный путь к корню проекта (относительно каталога сборки).</summary>
     public static string ProjectRoot =>
         Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
 
+    /// <summary>Собирает путь внутри каталога data из переданных частей.</summary>
     public static string DataPath(params string[] parts) =>
         Path.Combine(new[] { ProjectRoot, "data" }.Concat(parts).ToArray());
 
+    /// <summary>
+    /// Ищет файл мини-карты топографии Mars_topography_* в data;
+    /// возвращает null, если подходящий файл не найден.
+    /// </summary>
     public static string? FindMinimapImage()
     {
         foreach (var name in new[]

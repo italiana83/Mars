@@ -5,6 +5,10 @@ using System.Reflection;
 
 namespace Mars;
 
+/// <summary>
+/// Боковое sci-fi меню: заголовок «Меню» с раскрытием пунктов «Мини карта» и «Настройки»,
+/// отрисовка chamfer-панелей OpenGL, текст и обработка кликов/наведения мыши.
+/// </summary>
 public sealed class SidebarMenu : IDisposable
 {
     private float _scaleY = 1f;
@@ -53,6 +57,7 @@ public sealed class SidebarMenu : IDisposable
     public bool IsMinimapVisible { get; private set; }
     public bool IsSettingsVisible { get; private set; }
 
+    /// <summary>Y-координата (framebuffer) нижнего края меню — для позиционирования миникарты и панели настроек.</summary>
     public float BottomY
     {
         get
@@ -64,6 +69,10 @@ public sealed class SidebarMenu : IDisposable
         }
     }
 
+    /// <summary>
+    /// Инициализирует текстовый рендер, GL-буферы для полигонов, color shader и UBO ортографии
+    /// по размерам и масштабу UI из <paramref name="screen"/>.
+    /// </summary>
     public SidebarMenu(UiScreen screen)
     {
         _screenW = screen.FramebufferWidth;
@@ -80,6 +89,7 @@ public sealed class SidebarMenu : IDisposable
         UpdateOrtho();
     }
 
+    /// <summary>Обновляет размеры framebuffer, масштаб UI, текстовый рендер и ортографическую проекцию.</summary>
     public void UpdateScreenSize(UiScreen screen)
     {
         _screenW = screen.FramebufferWidth;
@@ -91,6 +101,7 @@ public sealed class SidebarMenu : IDisposable
         UpdateOrtho();
     }
 
+    /// <summary>Определяет индекс пункта меню под курсором при раскрытом меню для подсветки hover.</summary>
     public void UpdateMouse(float mouseX, float mouseY)
     {
         _hoveredItem = -1;
@@ -107,6 +118,11 @@ public sealed class SidebarMenu : IDisposable
         }
     }
 
+    /// <summary>
+    /// Обрабатывает клик: заголовок сворачивает/разворачивает меню; пункты переключают
+    /// <see cref="IsMinimapVisible"/> и <see cref="IsSettingsVisible"/> (взаимоисключающе).
+    /// Возвращает true, если клик поглощён областью меню.
+    /// </summary>
     public bool HandleMouseDown(float mouseX, float mouseY)
     {
         if (GetHeaderRect().Contains(mouseX, mouseY))
@@ -148,6 +164,10 @@ public sealed class SidebarMenu : IDisposable
         return GetPanelBounds().Contains(mouseX, mouseY);
     }
 
+    /// <summary>
+    /// Рисует заголовок и при <see cref="IsExpanded"/> — пункты меню поверх сцены
+    /// с blend и без depth test; восстанавливает прежнее GL-состояние.
+    /// </summary>
     public void Render()
     {
         int[] polygonMode = new int[2];
@@ -170,6 +190,7 @@ public sealed class SidebarMenu : IDisposable
         GL.PolygonMode(MaterialFace.FrontAndBack, (PolygonMode)polygonMode[0]);
     }
 
+    /// <summary>Рисует панель заголовка «Меню», декоративную вкладку сверху и подпись.</summary>
     private void DrawHeaderPanel()
     {
         var pos = new Vector2(Margin, MenuTop);
@@ -187,6 +208,7 @@ public sealed class SidebarMenu : IDisposable
         _text.RenderTextFromTop(HeaderTitle, pos.X + 16f, pos.Y + HeaderTextPadding, 1f, TextColor);
     }
 
+    /// <summary>Рисует один пункт меню с заливкой selected/hover/default и текстовой подписью.</summary>
     private void DrawItemPanel(int index)
     {
         var rect = GetItemRect(index);
@@ -203,6 +225,10 @@ public sealed class SidebarMenu : IDisposable
         _text.RenderText(MenuItems[index], pos.X + 16f, TextY(pos.Y, size.Y), 1f, textColor);
     }
 
+    /// <summary>
+    /// Строит chamfer-полигон панели; при <paramref name="drawGlow"/> — свечение,
+    /// затем заливка и cyan-контур.
+    /// </summary>
     private void DrawSciFiPanel(Vector2 pos, Vector2 size, Vector4 fill, bool drawGlow = true)
     {
         var poly = BuildPanelPolygon(size, Chamfer);
@@ -213,6 +239,7 @@ public sealed class SidebarMenu : IDisposable
         DrawPolygonOutline(poly, CyanBorder, OutlineWidth, pos.Y);
     }
 
+    /// <summary>Два слоя масштабированного полигона для эффекта внешнего и внутреннего cyan-свечения.</summary>
     private void DrawPolygonGlow(List<Vector2> poly)
     {
         var center = Centroid(poly);
@@ -220,6 +247,7 @@ public sealed class SidebarMenu : IDisposable
         DrawFilledPolygon(ScalePolygon(poly, center, 1.008f), CyanGlowInner);
     }
 
+    /// <summary>Строит пятиточечный полигон панели с фаской в правом верхнем углу.</summary>
     private static List<Vector2> BuildPanelPolygon(Vector2 size, float chamfer)
     {
         float w = size.X;
@@ -236,12 +264,14 @@ public sealed class SidebarMenu : IDisposable
         };
     }
 
+    /// <summary>Сдвигает все вершины полигона на заданный вектор смещения.</summary>
     private static void Offset(List<Vector2> poly, Vector2 offset)
     {
         for (int i = 0; i < poly.Count; i++)
             poly[i] += offset;
     }
 
+    /// <summary>Вычисляет центроид полигона как среднее арифметическое его вершин.</summary>
     private static Vector2 Centroid(List<Vector2> poly)
     {
         float x = 0, y = 0;
@@ -254,6 +284,7 @@ public sealed class SidebarMenu : IDisposable
         return new Vector2(x / poly.Count, y / poly.Count);
     }
 
+    /// <summary>Масштабирует полигон относительно центра на коэффициент <paramref name="scale"/>.</summary>
     private static List<Vector2> ScalePolygon(List<Vector2> poly, Vector2 center, float scale)
     {
         var result = new List<Vector2>(poly.Count);
@@ -262,6 +293,7 @@ public sealed class SidebarMenu : IDisposable
         return result;
     }
 
+    /// <summary>Триангулирует полигон веером и заливает его указанным цветом.</summary>
     private void DrawFilledPolygon(List<Vector2> poly, Vector4 color)
     {
         if (poly.Count < 3)
@@ -271,6 +303,7 @@ public sealed class SidebarMenu : IDisposable
         UploadAndDraw(triangles, color);
     }
 
+    /// <summary>Разбивает выпуклый полигон на треугольники веером от первой вершины.</summary>
     private static List<Vector2> TriangulateFan(List<Vector2> poly)
     {
         var tris = new List<Vector2>();
@@ -284,6 +317,7 @@ public sealed class SidebarMenu : IDisposable
         return tris;
     }
 
+    /// <summary>Рисует контур полигона ребрами как утолщённые линии заданной ширины.</summary>
     private void DrawPolygonOutline(List<Vector2> poly, Vector4 color, float width, float minY)
     {
         for (int i = 0; i < poly.Count; i++)
@@ -294,6 +328,7 @@ public sealed class SidebarMenu : IDisposable
         }
     }
 
+    /// <summary>Рисует отрезок quad'ом с толщиной; Y вершин не опускается ниже <paramref name="minY"/>.</summary>
     private void DrawLine(Vector2 a, Vector2 b, Vector4 color, float width, float minY)
     {
         var dir = b - a;
@@ -319,8 +354,10 @@ public sealed class SidebarMenu : IDisposable
         }, color);
     }
 
+    /// <summary>Ограничивает Y-координату точки снизу значением <paramref name="minY"/>.</summary>
     private static Vector2 ClampY(Vector2 p, float minY) => new(p.X, Math.Max(p.Y, minY));
 
+    /// <summary>Загружает 2D-вершины в динамический VBO и рисует их треугольниками с uniform-цветом.</summary>
     private void UploadAndDraw(List<Vector2> vertices, Vector4 color)
     {
         if (vertices.Count == 0)
@@ -342,6 +379,7 @@ public sealed class SidebarMenu : IDisposable
         GL.DrawArrays(PrimitiveType.Triangles, 0, vertices.Count);
     }
 
+    /// <summary>Возвращает ограничивающий прямоугольник заголовка и всех пунктов при раскрытом меню.</summary>
     private RectangleF GetPanelBounds()
     {
         var bounds = GetHeaderRect();
@@ -353,19 +391,24 @@ public sealed class SidebarMenu : IDisposable
         return bounds;
     }
 
+    /// <summary>Вычисляет Y для вертикального центрирования строки текста внутри блока пункта.</summary>
     private float TextY(float blockY, float blockHeight) =>
         blockY + (blockHeight - _text.LineHeight) * 0.5f;
 
+    /// <summary>Прямоугольник панели заголовка в экранных координатах.</summary>
     private RectangleF GetHeaderRect() => new(Margin, MenuTop, Width, HeaderHeight);
 
+    /// <summary>Y-координата верхней границы первого пункта под заголовком с учётом отступов.</summary>
     private float ItemsStartY() => MenuTop + HeaderHeight + BlockGap + HeaderToItemsExtraGap;
 
+    /// <summary>Прямоугольник hit-test и отрисовки пункта меню по индексу.</summary>
     private RectangleF GetItemRect(int index)
     {
         float y = ItemsStartY() + index * (ItemHeight + BlockGap);
         return new RectangleF(Margin + ItemInset, y, Width - ItemInset, ItemHeight);
     }
 
+    /// <summary>Создаёт VAO/VBO для полигонов, color shader, UBO ортографии и привязку uniform block.</summary>
     private void InitGl()
     {
         _vaoPoly = GL.GenVertexArray();
@@ -386,6 +429,7 @@ public sealed class SidebarMenu : IDisposable
         GL.BindBufferBase(BufferRangeTarget.UniformBuffer, 0, _uboOrtho);
     }
 
+    /// <summary>Привязывает uniform block «Ortho» шейдера к binding point 0 через reflection.</summary>
     private void BindUbo(Shader shader)
     {
         int program = (int)typeof(Shader)
@@ -397,6 +441,7 @@ public sealed class SidebarMenu : IDisposable
             GL.UniformBlockBinding(program, index, 0);
     }
 
+    /// <summary>Пересчитывает ортографию экрана и записывает матрицу в UBO.</summary>
     private void UpdateOrtho()
     {
         _ortho = Matrix4.CreateOrthographicOffCenter(0, _screenW, _screenH, 0, -1, 1);
@@ -404,6 +449,7 @@ public sealed class SidebarMenu : IDisposable
         GL.BufferSubData(BufferTarget.UniformBuffer, IntPtr.Zero, 64, ref _ortho);
     }
 
+    /// <summary>Освобождает VAO, VBO полигонов и UBO ортографии.</summary>
     public void Dispose()
     {
         GL.DeleteVertexArray(_vaoPoly);

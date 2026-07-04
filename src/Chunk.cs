@@ -2,8 +2,14 @@
 
 namespace Mars;
 
+/// <summary>
+/// Фрагмент heightmap-меша для отдельной отрисовки и frustum culling.
+/// </summary>
 public class Chunk
 {
+    /// <summary>
+    /// Создаёт чанк: сохраняет геометрию, вычисляет AABB и инициализирует отладочный bbox-renderer.
+    /// </summary>
     public Chunk(int index, List<Vector4> vertices, List<int> indices)
     {
         Index = index;
@@ -18,13 +24,23 @@ public class Chunk
     }
 
     public int Index { get; set; }
+
+    /// <summary>OpenGL EBO с индексами треугольников этого чанка.</summary>
     public int ElementBuffer { get; set; }
+
+    /// <summary>Axis-aligned bounding box чанка — для проверки пересечения с frustum камеры.</summary>
     public BoundingBox BoundingBoxe { get; set; }
+
+    /// <summary>Отладочная отрисовка bbox чанка (если включена).</summary>
     public BoundingBoxRenderer BoundingBoxRenderer { get; set; }
+
     public List<Vector4> Vertices { get; set; }
     public List<int> Indices { get; set; }
+
+    /// <summary>Центр bbox чанка — может использоваться для сортировки/LOD.</summary>
     public Vector3 Center { get; set; }
 
+    /// <summary>Вычисляет axis-aligned bounding box по списку вершин чанка.</summary>
     private static BoundingBox CalculateAabb(List<Vector4> vertices)
     {
         Vector3 min = new(float.MaxValue, float.MaxValue, float.MaxValue);

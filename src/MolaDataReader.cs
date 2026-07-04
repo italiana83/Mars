@@ -2,8 +2,12 @@
 
 namespace Mars;
 
+/// <summary>
+/// Чтение MOLA PDS-файлов: метаданные из .lbl и heightmap из бинарного .img.
+/// </summary>
 public class MolaDataReader
 {
+    /// <summary>Парсит PDS label (.lbl): пары ключ=значение в словарь.</summary>
     public Dictionary<string, string> ReadLblFile(string lblFilePath)
     {
         var parameters = new Dictionary<string, string>();
@@ -18,6 +22,10 @@ public class MolaDataReader
         return parameters;
     }
 
+    /// <summary>
+    /// Читает .img с учётом параметров из lbl: размер, endianness, шаг прореживания step.
+    /// Заполняет вершины сетки (X,Z — координаты, Y/W — высота в км).
+    /// </summary>
     public MapData ReadImgFile(string imgFilePath, Dictionary<string, string> parameters, int step)
     {
         MapData data = new() { Step = step };

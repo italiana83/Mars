@@ -8,16 +8,21 @@ using System.Threading.Tasks;
 
 namespace Mars
 {
+    /// <summary>
+    /// Отрисовка wireframe AABB красными линиями для отладки границ чанков и модели.
+    /// </summary>
     public class BoundingBoxRenderer
     {
         private int _vao;
         private int _vbo;
         private Shader _shader;
 
+        /// <summary>Создаёт пустой рендерер; геометрия задаётся в <see cref="CreateBoundingBox"/>.</summary>
         public BoundingBoxRenderer()
         {
         }
 
+        /// <summary>Генерирует VAO/VBO и шейдер для параллелепипеда между min и max.</summary>
         public void CreateBoundingBox(Vector3 min, Vector3 max)
         {
             // Вершины параллелепипеда
@@ -81,6 +86,7 @@ namespace Mars
 
         }
 
+        /// <summary>Рисует bbox линиями с переданными view и projection.</summary>
         public void DrawBoundingBox(Matrix4 view, Matrix4 projection)
         {
             _shader.Use();
@@ -95,6 +101,7 @@ namespace Mars
 
         }
 
+        /// <summary>Удаляет VAO и VBO из OpenGL.</summary>
         public void Dispose()
         {
             if (_vao != 0) GL.DeleteVertexArray(_vao);

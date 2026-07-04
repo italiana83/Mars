@@ -6,6 +6,9 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 
 namespace Mars;
 
+/// <summary>
+/// Главное окно приложения: 3D-просмотр MOLA heightmap, камера, UI (меню, миникарта, настройки).
+/// </summary>
 public class HeightmapGame : GameWindow
 {
     private MapData mapData;
@@ -29,6 +32,9 @@ public class HeightmapGame : GameWindow
     SidebarMenu sidebarMenu;
     UiScreen uiScreen;
 
+    /// <summary>
+    /// Инициализирует окно OpenTK 3.3 Core и загружает heightmap MEG128 из PDS-файлов (.lbl + .img).
+    /// </summary>
     public HeightmapGame()
         : base(
             new GameWindowSettings { UpdateFrequency = 60.0 },
@@ -46,6 +52,9 @@ public class HeightmapGame : GameWindow
         mapData = reader.ReadImgFile(AppPaths.DataPath("mola", "meg128", "megt00n000hb.img"), parameters, 8);
     }
 
+    /// <summary>
+    /// Вызывается после создания контекста OpenGL: настраивает UI, minimap, панели, рендереры меша, осей и bounding box.
+    /// </summary>
     protected override void OnLoad()
     {
         base.OnLoad();
@@ -76,6 +85,9 @@ public class HeightmapGame : GameWindow
         axisRender = new AxisRender(100.0f, 2.5f, 10.0f, meshRender.ModelCenter);
     }
 
+    /// <summary>
+    /// Обрабатывает нажатие левой кнопки: передаёт событие UI (sidebar, minimap, settings) или начинает захват мыши для камеры.
+    /// </summary>
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
@@ -99,12 +111,18 @@ public class HeightmapGame : GameWindow
         lastMousePos = new Vector2(MouseState.X, MouseState.Y);
     }
 
+    /// <summary>
+    /// Сбрасывает флаг захвата мыши при отпускании кнопки.
+    /// </summary>
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
         mouseDown = false;
     }
 
+    /// <summary>
+    /// Вращает камеру левой кнопкой, перемещает по Z правой; обновляет hover-состояние sidebar.
+    /// </summary>
     protected override void OnMouseMove(MouseMoveEventArgs e)
     {
         base.OnMouseMove(e);
@@ -132,6 +150,9 @@ public class HeightmapGame : GameWindow
         }
     }
 
+    /// <summary>
+    /// Приближает или отдаляет камеру по оси Y в зависимости от направления прокрутки колёсика.
+    /// </summary>
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
@@ -142,6 +163,9 @@ public class HeightmapGame : GameWindow
             cam.Move(0f, -10000.0f, 0f);
     }
 
+    /// <summary>
+    /// Обновляет счётчик кадров и раз в секунду выводит FPS в заголовок окна.
+    /// </summary>
     protected override void OnUpdateFrame(FrameEventArgs args)
     {
         base.OnUpdateFrame(args);
@@ -158,6 +182,9 @@ public class HeightmapGame : GameWindow
         }
     }
 
+    /// <summary>
+    /// Очищает буферы, отрисовывает 3D-сцену (оси, меш, AABB) и поверх — UI (minimap, панели, sidebar).
+    /// </summary>
     protected override void OnRenderFrame(FrameEventArgs args)
     {
         base.OnRenderFrame(args);
@@ -186,6 +213,9 @@ public class HeightmapGame : GameWindow
         SwapBuffers();
     }
 
+    /// <summary>
+    /// Пересчитывает layout UI, viewport и матрицу проекции при изменении размера окна или первой загрузке.
+    /// </summary>
     private void UpdateUiLayout()
     {
         uiScreen = UiScreen.From(this);
@@ -201,6 +231,9 @@ public class HeightmapGame : GameWindow
             90000.0f);
     }
 
+    /// <summary>
+    /// Реагирует на изменение размера окна: пересчитывает UI и projection.
+    /// </summary>
     protected override void OnResize(ResizeEventArgs e)
     {
         base.OnResize(e);
