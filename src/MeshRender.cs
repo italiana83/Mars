@@ -13,9 +13,14 @@ public class MeshRender : IDisposable
     /// но больше draw calls; большие — наоборот.
     /// </summary>
     private const int ChunkSize = 100;
+    private const float MaxHeightScale = 10f;
 
     /// <summary>Исходные вершины heightmap из MOLA (.img): позиция (X,Y,Z) + высота в W-компоненте.</summary>
-    private readonly MapData _mapData;
+    private readonly List<Vector4> _originalVertices;
+
+    private readonly int _rows;
+    private readonly int _cols;
+    private readonly float _baseMinY;
 
     /// <summary>Шейдер с vertex/fragment stages; fragment shader интерполирует цвет по высоте вершины.</summary>
     private readonly Shader _shader;
@@ -64,6 +69,9 @@ public class MeshRender : IDisposable
     private bool _disposed;
 
     /// <summary>Геометрический центр модели (середина AABB). Используется для осей координат и навигации камеры.</summary>
+    /// <summary>Масштаб вертикального рельефа: 1 — исходная высота, 0 — ровная поверхность.</summary>
+    public float HeightScale { get; private set; } = 1f;
+
     public Vector3 ModelCenter { get; private set; }
 
     /// <summary>Минимальная и максимальная точки axis-aligned bounding box всего меша.</summary>
@@ -84,10 +92,13 @@ public class MeshRender : IDisposable
     /// </summary>
     public MeshRender(MapData mapData)
     {
-        _mapData = mapData;
+        _rows = mapData.Rows;
+        _cols = mapData.Cols;
+        _originalVertices = mapData.Vertices.ToList();
         _chunkManager = new ChunkManager();
 
         ModelCenter = CalculateModelCenter();
+        _baseMinY = MinY;
         SplitModelIntoChunks(ChunkSize);
         InitializeBuffers();
         InitializeChunkBuffers();
@@ -106,8 +117,8 @@ public class MeshRender : IDisposable
         GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
         GL.BufferData(
             BufferTarget.ArrayBuffer,
-            _mapData.Vertices.Count * sizeof(float) * 4,
-            _mapData.Vertices.ToArray(),
+            _originalVertices.Count * sizeof(float) * 4,
+            _originalVertices.ToArray(),
             BufferUsageHint.StaticDraw);
 
         GL.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 4 * sizeof(float), 0);
@@ -244,15 +255,15 @@ public class MeshRender : IDisposable
     {
         List<Vector4> chunkVertices = new();
 
-        int endRow = Math.Min(startRow + chunkRows + 1, _mapData.Rows);
-        int endCol = Math.Min(startCol + chunkCols + 1, _mapData.Cols);
+        int endRow = Math.Min(startRow + chunkRows + 1, GetRowCount());
+        int endCol = Math.Min(startCol + chunkCols + 1, GetColCount());
 
         for (int y = startRow; y < endRow; y++)
         {
             for (int x = startCol; x < endCol; x++)
             {
-                int vertexIndex = y * _mapData.Cols + x;
-                chunkVertices.Add(_mapData.Vertices[vertexIndex]);
+                int vertexIndex = y * GetColCount() + x;
+                chunkVertices.Add(_originalVertices[vertexIndex]);
             }
         }
 
@@ -266,19 +277,19 @@ public class MeshRender : IDisposable
     {
         List<int> indices = new();
 
-        int endRow = Math.Min(startRow + chunkRows, _mapData.Rows - 1);
-        int endCol = Math.Min(startCol + chunkCols, _mapData.Cols - 1);
+        int endRow = Math.Min(startRow + chunkRows, GetRowCount() - 1);
+        int endCol = Math.Min(startCol + chunkCols, GetColCount() - 1);
 
         for (int y = startRow; y < endRow; y++)
         {
             for (int x = startCol; x < endCol; x++)
             {
-                int topLeft = y * _mapData.Cols + x;
+                int topLeft = y * GetColCount() + x;
                 int topRight = topLeft + 1;
-                int bottomLeft = (y + 1) * _mapData.Cols + x;
+                int bottomLeft = (y + 1) * GetColCount() + x;
                 int bottomRight = bottomLeft + 1;
 
-                if (x + 1 < _mapData.Cols && y + 1 < _mapData.Rows)
+                if (x + 1 < GetColCount() && y + 1 < GetRowCount())
                 {
                     indices.Add(topLeft);
                     indices.Add(bottomLeft);
@@ -307,7 +318,7 @@ public class MeshRender : IDisposable
         MinZ = float.MaxValue;
         MaxZ = float.MinValue;
 
-        foreach (var vertex in _mapData.Vertices)
+        foreach (var vertex in _originalVertices)
         {
             MinX = MathF.Min(MinX, vertex.X);
             MinY = MathF.Min(MinY, vertex.Y);
@@ -330,12 +341,12 @@ public class MeshRender : IDisposable
     /// </summary>
     private void SplitModelIntoChunks(int chunkSize)
     {
-        for (int row = 0; row < _mapData.Rows; row += chunkSize)
+        for (int row = 0; row < GetRowCount(); row += chunkSize)
         {
-            for (int col = 0; col < _mapData.Cols; col += chunkSize)
+            for (int col = 0; col < GetColCount(); col += chunkSize)
             {
-                int chunkRows = Math.Min(chunkSize, _mapData.Rows - row);
-                int chunkCols = Math.Min(chunkSize, _mapData.Cols - col);
+                int chunkRows = Math.Min(chunkSize, GetRowCount() - row);
+                int chunkCols = Math.Min(chunkSize, GetColCount() - col);
 
                 var chunkVertices = GetVerticesForChunk(row, col, chunkRows, chunkCols);
                 var indices = GenerateHeightMapIndicesForChunk(row, col, chunkRows, chunkCols);
@@ -363,6 +374,85 @@ public class MeshRender : IDisposable
             GL.BindBuffer(BufferTarget.ElementArrayBuffer, chunk.ElementBuffer);
             GL.DrawElements(PrimitiveType.Triangles, chunk.Indices.Count, DrawElementsType.UnsignedInt, 0);
         }
+    }
+
+    /// <summary>Устанавливает масштаб вертикального рельефа и обновляет геометрию.</summary>
+    public void SetHeightScale(float scale)
+    {
+        scale = Math.Clamp(scale, 0f, MaxHeightScale);
+        if (MathF.Abs(scale - HeightScale) < 0.0001f)
+            return;
+
+        HeightScale = scale;
+        ApplyHeightScale();
+    }
+
+    private int GetRowCount() => _rows;
+
+    private int GetColCount() => _cols;
+
+    private float ScaleElevation(float originalY) =>
+        _baseMinY + (originalY - _baseMinY) * HeightScale;
+
+    private void ApplyHeightScale()
+    {
+        var display = new Vector4[_originalVertices.Count];
+        for (int i = 0; i < _originalVertices.Count; i++)
+        {
+            var o = _originalVertices[i];
+            float y = ScaleElevation(o.Y);
+            display[i] = new Vector4(o.X, y, o.Z, y);
+        }
+
+        GL.BindBuffer(BufferTarget.ArrayBuffer, _vbo);
+        GL.BufferSubData(BufferTarget.ArrayBuffer, IntPtr.Zero, display.Length * sizeof(float) * 4, display);
+
+        UpdateModelBounds(display);
+
+        foreach (var chunk in _chunkManager.Chunks)
+            chunk.ApplyHeightScale(_baseMinY, HeightScale);
+
+        UpdateShaderHeightColors();
+    }
+
+    private void UpdateModelBounds(Vector4[] vertices)
+    {
+        MinX = float.MaxValue;
+        MaxX = float.MinValue;
+        MinY = float.MaxValue;
+        MaxY = float.MinValue;
+        MinZ = float.MaxValue;
+        MaxZ = float.MinValue;
+
+        foreach (var vertex in vertices)
+        {
+            MinX = MathF.Min(MinX, vertex.X);
+            MinY = MathF.Min(MinY, vertex.Y);
+            MinZ = MathF.Min(MinZ, vertex.Z);
+
+            MaxX = MathF.Max(MaxX, vertex.X);
+            MaxY = MathF.Max(MaxY, vertex.Y);
+            MaxZ = MathF.Max(MaxZ, vertex.Z);
+        }
+
+        Min = new Vector3(MinX, MinY, MinZ);
+        Max = new Vector3(MaxX, MaxY, MaxZ);
+        ModelCenter = (Min + Max) * 0.5f;
+    }
+
+    private void UpdateShaderHeightColors()
+    {
+        float maxY = MathF.Abs(MaxY - MinY) < 1e-6f ? MinY + 1f : MaxY;
+        var heightColorMap = CalculateHeights(MinY, maxY);
+        _shader.Use();
+        SetHeightColorData(_shader, heightColorMap);
+    }
+
+    /// <summary>Рисует wireframe bbox всех чанков (отладка разбиения меша).</summary>
+    public void DrawChunkBounds(Matrix4 view, Matrix4 projection)
+    {
+        foreach (var chunk in _chunkManager.Chunks)
+            chunk.BoundingBoxRenderer.DrawBoundingBox(view, projection);
     }
 
     /// <summary>

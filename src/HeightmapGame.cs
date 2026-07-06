@@ -12,10 +12,11 @@ namespace Mars;
 /// </summary>
 public class HeightmapGame : GameWindow
 {
-    private const int HeightmapStep = 8;
+    private const int DefaultHeightmapStep = 8;
     private const string DefaultTileName = "megt00n000hb";
 
     private MapData mapData;
+    private string _currentTileName = DefaultTileName;
 
     BoundingBoxRenderer boundingBoxRenderer;
     AxisRender axisRender;
@@ -51,20 +52,22 @@ public class HeightmapGame : GameWindow
                 AlphaBits = 8
             })
     {
-        mapData = LoadTopographyTile(DefaultTileName);
+        mapData = LoadTopographyTile(DefaultTileName, DefaultHeightmapStep);
     }
 
-    private MapData LoadTopographyTile(string tileBaseName)
+    private MapData LoadTopographyTile(string tileBaseName, int step)
     {
         var reader = new MolaDataReader();
-        return reader.LoadTopographyTile(AppPaths.Meg128Directory, tileBaseName, HeightmapStep);
+        return reader.LoadTopographyTile(AppPaths.Meg128Directory, tileBaseName, step);
     }
 
-    private void ReloadTopographyTile(Meg128TileBounds tile)
+    private int GetHeightmapStep() => settingsPanel?.HeightmapStep ?? DefaultHeightmapStep;
+
+    private void ReloadCurrentTopographyTile()
     {
         try
         {
-            var newData = LoadTopographyTile(tile.Name);
+            var newData = LoadTopographyTile(_currentTileName, GetHeightmapStep());
             var newMesh = new MeshRender(newData);
             var newAxis = new AxisRender(100.0f, 2.5f, 10.0f, newMesh.ModelCenter);
 
@@ -76,18 +79,27 @@ public class HeightmapGame : GameWindow
             axisRender = newAxis;
             boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
 
-            minimap.SetSelectedTile(tile.Name);
-            Title = $"Mars MOLA Viewer - {tile.Name.ToUpperInvariant()}";
+            minimap.SetSelectedTile(_currentTileName);
+            settingsPanel.ResetMeshHeightScale(1f);
+            meshRender.SetHeightScale(1f);
+            boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
+            Title = $"Mars MOLA Viewer - {_currentTileName.ToUpperInvariant()}";
         }
         catch (FileNotFoundException)
         {
-            Title = $"Mars MOLA Viewer - {tile.Name}.img not found";
+            Title = $"Mars MOLA Viewer - {_currentTileName}.img not found";
         }
         catch (Exception ex)
         {
-            Title = $"Mars MOLA Viewer - load failed: {tile.Name}";
-            Trace.WriteLine($"Failed to load tile {tile.Name}: {ex}");
+            Title = $"Mars MOLA Viewer - load failed: {_currentTileName}";
+            Trace.WriteLine($"Failed to load tile {_currentTileName}: {ex}");
         }
+    }
+
+    private void ReloadTopographyTile(Meg128TileBounds tile)
+    {
+        _currentTileName = tile.Name;
+        ReloadCurrentTopographyTile();
     }
 
     /// <summary>
@@ -105,7 +117,9 @@ public class HeightmapGame : GameWindow
                 AppPaths.DataPath("Mars_topography_(MOLA_dataset)_HiRes.png"));
 
         minimap = new Minimap(minimapImage, uiScreen.FramebufferWidth, uiScreen.FramebufferHeight, uiScreen.ScaleY);
-        settingsPanel = new SciFiPanelOverlay(uiScreen.FramebufferWidth, uiScreen.FramebufferHeight);
+        settingsPanel = new SciFiPanelOverlay(uiScreen);
+        settingsPanel.SetHeightmapStep(DefaultHeightmapStep);
+        settingsPanel.OnHeightmapStepChanged = _ => ReloadCurrentTopographyTile();
         sidebarMenu = new SidebarMenu(uiScreen);
 
         GL.ClearColor(0.1f, 0.2f, 0.3f, 1.0f);
@@ -147,7 +161,10 @@ public class HeightmapGame : GameWindow
 
             settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
             if (settingsPanel.IsVisible && settingsPanel.HandleMouseDown(mouse.X, mouse.Y))
+            {
+                ApplyMeshHeightFromSettings();
                 return;
+            }
         }
 
         mouseDown = true;
@@ -175,6 +192,10 @@ public class HeightmapGame : GameWindow
         minimap.IsVisible = sidebarMenu.IsMinimapVisible;
         if (minimap.IsVisible)
             minimap.UpdateMouse(mouse.X, mouse.Y);
+
+        settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
+        if (settingsPanel.IsVisible)
+            settingsPanel.UpdateMouse(mouse.X, mouse.Y);
 
         if (!mouseDown)
             return;
@@ -242,7 +263,16 @@ public class HeightmapGame : GameWindow
         frustum.Update(view * projection);
 
         axisRender.DrawAxis(view, projection);
+
+        GL.PolygonMode(
+            MaterialFace.FrontAndBack,
+            settingsPanel.IsFillEnabled ? PolygonMode.Fill : PolygonMode.Line);
+
         meshRender.DrawMesh(view, projection, Matrix4.Identity, cam.Position, frustum);
+
+        if (settingsPanel.IsShowChunksEnabled)
+            meshRender.DrawChunkBounds(view, projection);
+
         boundingBoxRenderer.DrawBoundingBox(view, projection);
 
         var panelOrigin = new Vector2(12f, sidebarMenu.BottomY + 8f);
@@ -266,16 +296,28 @@ public class HeightmapGame : GameWindow
     private void UpdateUiLayout()
     {
         uiScreen = UiScreen.From(this);
-        GL.Viewport(0, 0, uiScreen.FramebufferWidth, uiScreen.FramebufferHeight);
-        minimap?.UpdateScreenSize(uiScreen.FramebufferWidth, uiScreen.FramebufferHeight, uiScreen.ScaleY);
-        settingsPanel?.UpdateScreenSize(uiScreen.FramebufferWidth, uiScreen.FramebufferHeight);
+
+        int fbW = Math.Max(1, uiScreen.FramebufferWidth);
+        int fbH = Math.Max(1, uiScreen.FramebufferHeight);
+        GL.Viewport(0, 0, fbW, fbH);
+        minimap?.UpdateScreenSize(fbW, fbH, uiScreen.ScaleY);
+        settingsPanel?.UpdateScreenSize(uiScreen);
         sidebarMenu?.UpdateScreenSize(uiScreen);
+
+        if (uiScreen.ClientWidth <= 0 || uiScreen.ClientHeight <= 0)
+            return;
 
         projection = Matrix4.CreatePerspectiveFieldOfView(
             MathHelper.DegreesToRadians(45.0f),
-            uiScreen.ClientWidth / (float)Math.Max(1, uiScreen.ClientHeight),
+            uiScreen.ClientWidth / (float)uiScreen.ClientHeight,
             0.1f,
             90000.0f);
+    }
+
+    private void ApplyMeshHeightFromSettings()
+    {
+        meshRender.SetHeightScale(settingsPanel.MeshHeightScale);
+        boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
     }
 
     /// <summary>

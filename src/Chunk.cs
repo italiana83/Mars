@@ -15,6 +15,7 @@ public class Chunk
         Index = index;
         Vertices = vertices;
         Indices = indices;
+        OriginalYs = vertices.Select(v => v.Y).ToList();
 
         BoundingBoxe = CalculateAabb(vertices);
         Center = (BoundingBoxe.Min + BoundingBoxe.Max) / 2;
@@ -37,11 +38,32 @@ public class Chunk
     public List<Vector4> Vertices { get; set; }
     public List<int> Indices { get; set; }
 
+    /// <summary>Исходная Y-координата вершин до масштабирования рельефа.</summary>
+    public List<float> OriginalYs { get; }
+
     /// <summary>Центр bbox чанка — может использоваться для сортировки/LOD.</summary>
     public Vector3 Center { get; set; }
 
+    /// <summary>Применяет масштаб высоты: 0 — ровная плоскость на уровне минимума.</summary>
+    public void ApplyHeightScale(float baseMinY, float scale)
+    {
+        for (int j = 0; j < Vertices.Count; j++)
+        {
+            float y = baseMinY + (OriginalYs[j] - baseMinY) * scale;
+            var v = Vertices[j];
+            Vertices[j] = new Vector4(v.X, y, v.Z, y);
+        }
+
+        BoundingBoxe = CalculateAabb(Vertices);
+        Center = (BoundingBoxe.Min + BoundingBoxe.Max) / 2;
+
+        BoundingBoxRenderer.Dispose();
+        BoundingBoxRenderer = new BoundingBoxRenderer();
+        BoundingBoxRenderer.CreateBoundingBox(BoundingBoxe.Min, BoundingBoxe.Max);
+    }
+
     /// <summary>Вычисляет axis-aligned bounding box по списку вершин чанка.</summary>
-    private static BoundingBox CalculateAabb(List<Vector4> vertices)
+    internal static BoundingBox CalculateAabb(List<Vector4> vertices)
     {
         Vector3 min = new(float.MaxValue, float.MaxValue, float.MaxValue);
         Vector3 max = new(float.MinValue, float.MinValue, float.MinValue);

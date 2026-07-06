@@ -1,6 +1,7 @@
 ﻿using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using SkiaSharp;
+using System.Drawing;
 
 namespace Mars;
 
@@ -27,6 +28,32 @@ public class TextRenderer : IDisposable
         using var font = new SKFont(_typeface, _fontSize) { Edging = SKFontEdging.Antialias };
         font.MeasureText(text, out var bounds);
         return bounds.Height;
+    }
+
+    /// <summary>Суммарная ширина строки в пикселях при заданном масштабе.</summary>
+    public float MeasureTextWidth(string text, float scale = 1f)
+    {
+        EnsureGlyphs(text);
+        float width = 0f;
+        foreach (var rune in text.EnumerateRunes())
+        {
+            if (_characters.TryGetValue(rune.Value, out var ch))
+                width += ch.Advance * scale;
+        }
+
+        return width;
+    }
+
+    /// <summary>Рисует текст по центру прямоугольника (горизонтально и вертикально).</summary>
+    public void RenderTextCenteredInRect(RectangleF rect, string text, float scale, Vector3 color)
+    {
+        float width = MeasureTextWidth(text, scale);
+        using var font = new SKFont(_typeface, _fontSize) { Edging = SKFontEdging.Antialias };
+        font.MeasureText(text, out var bounds);
+
+        float x = rect.X + (rect.Width - width) * 0.5f;
+        float topY = rect.Y + (rect.Height - bounds.Height * scale) * 0.5f;
+        RenderTextFromTop(text, x, topY, scale, color);
     }
 
     /// <summary>
