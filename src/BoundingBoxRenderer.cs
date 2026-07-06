@@ -25,6 +25,8 @@ namespace Mars
         /// <summary>Генерирует VAO/VBO и шейдер для параллелепипеда между min и max.</summary>
         public void CreateBoundingBox(Vector3 min, Vector3 max)
         {
+            ReleaseGl();
+
             // Вершины параллелепипеда
             float[] vertices = {
             // Нижняя грань
@@ -101,11 +103,27 @@ namespace Mars
 
         }
 
-        /// <summary>Удаляет VAO и VBO из OpenGL.</summary>
+        /// <summary>Удаляет VAO, VBO и shader program из OpenGL.</summary>
         public void Dispose()
         {
-            if (_vao != 0) GL.DeleteVertexArray(_vao);
-            if (_vbo != 0) GL.DeleteBuffer(_vbo);
+            ReleaseGl();
+        }
+
+        private void ReleaseGl()
+        {
+            if (_vao != 0)
+            {
+                GL.DeleteVertexArray(_vao);
+                _vao = 0;
+            }
+
+            if (_vbo != 0)
+            {
+                GL.DeleteBuffer(_vbo);
+                _vbo = 0;
+            }
+
+            _shader?.Dispose();
         }
     }
 

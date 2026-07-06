@@ -3,6 +3,7 @@ using OpenTK.Windowing.Desktop;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Mathematics;
 using OpenTK.Windowing.GraphicsLibraryFramework;
+using System.Diagnostics;
 
 namespace Mars;
 
@@ -11,6 +12,9 @@ namespace Mars;
 /// </summary>
 public class HeightmapGame : GameWindow
 {
+    private const int HeightmapStep = 8;
+    private const string DefaultTileName = "megt00n000hb";
+
     private MapData mapData;
 
     BoundingBoxRenderer boundingBoxRenderer;
@@ -47,9 +51,43 @@ public class HeightmapGame : GameWindow
                 AlphaBits = 8
             })
     {
+        mapData = LoadTopographyTile(DefaultTileName);
+    }
+
+    private MapData LoadTopographyTile(string tileBaseName)
+    {
         var reader = new MolaDataReader();
-        var parameters = reader.ReadLblFile(AppPaths.DataPath("mola", "meg128", "megt44n180hb.lbl"));
-        mapData = reader.ReadImgFile(AppPaths.DataPath("mola", "meg128", "megt00n000hb.img"), parameters, 8);
+        return reader.LoadTopographyTile(AppPaths.Meg128Directory, tileBaseName, HeightmapStep);
+    }
+
+    private void ReloadTopographyTile(Meg128TileBounds tile)
+    {
+        try
+        {
+            var newData = LoadTopographyTile(tile.Name);
+            var newMesh = new MeshRender(newData);
+            var newAxis = new AxisRender(100.0f, 2.5f, 10.0f, newMesh.ModelCenter);
+
+            meshRender.Dispose();
+            axisRender.Dispose();
+
+            mapData = newData;
+            meshRender = newMesh;
+            axisRender = newAxis;
+            boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
+
+            minimap.SetSelectedTile(tile.Name);
+            Title = $"Mars MOLA Viewer - {tile.Name.ToUpperInvariant()}";
+        }
+        catch (FileNotFoundException)
+        {
+            Title = $"Mars MOLA Viewer - {tile.Name}.img not found";
+        }
+        catch (Exception ex)
+        {
+            Title = $"Mars MOLA Viewer - load failed: {tile.Name}";
+            Trace.WriteLine($"Failed to load tile {tile.Name}: {ex}");
+        }
     }
 
     /// <summary>
@@ -83,6 +121,7 @@ public class HeightmapGame : GameWindow
         boundingBoxRenderer = new BoundingBoxRenderer();
         boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
         axisRender = new AxisRender(100.0f, 2.5f, 10.0f, meshRender.ModelCenter);
+        minimap.SetSelectedTile(DefaultTileName);
     }
 
     /// <summary>
@@ -100,7 +139,11 @@ public class HeightmapGame : GameWindow
 
             minimap.IsVisible = sidebarMenu.IsMinimapVisible;
             if (minimap.IsVisible && minimap.HandleMouseDown(mouse.X, mouse.Y))
+            {
+                if (minimap.TryPickTile(mouse.X, mouse.Y, out var tile))
+                    ReloadTopographyTile(tile);
                 return;
+            }
 
             settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
             if (settingsPanel.IsVisible && settingsPanel.HandleMouseDown(mouse.X, mouse.Y))
@@ -128,6 +171,10 @@ public class HeightmapGame : GameWindow
         base.OnMouseMove(e);
         var mouse = uiScreen.ClientToFramebuffer(MouseState.X, MouseState.Y);
         sidebarMenu.UpdateMouse(mouse.X, mouse.Y);
+
+        minimap.IsVisible = sidebarMenu.IsMinimapVisible;
+        if (minimap.IsVisible)
+            minimap.UpdateMouse(mouse.X, mouse.Y);
 
         if (!mouseDown)
             return;

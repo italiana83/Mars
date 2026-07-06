@@ -1,4 +1,6 @@
 ﻿using OpenTK.Mathematics;
+using System.Globalization;
+using System.Diagnostics;
 
 namespace Mars;
 
@@ -20,6 +22,47 @@ public class MolaDataReader
             }
         }
         return parameters;
+    }
+
+    /// <summary>Извлекает числовое значение из PDS-поля вида «-44.0 &lt;DEGREE&gt;».</summary>
+    public static float ParsePdsDegree(string value)
+    {
+        int idx = value.IndexOf('<');
+        string num = idx >= 0 ? value[..idx] : value;
+        return float.Parse(num.Trim(), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Читает географические границы тайла из IMAGE_MAP_PROJECTION секции .lbl.</summary>
+    public Meg128TileBounds ReadTileBounds(string lblFilePath)
+    {
+        var p = ReadLblFile(lblFilePath);
+        return new Meg128TileBounds(
+            Path.GetFileNameWithoutExtension(lblFilePath),
+            ParsePdsDegree(p["MINIMUM_LATITUDE"]),
+            ParsePdsDegree(p["MAXIMUM_LATITUDE"]),
+            ParsePdsDegree(p["WESTERNMOST_LONGITUDE"]),
+            ParsePdsDegree(p["EASTERNMOST_LONGITUDE"]));
+    }
+
+    /// <summary>Сканирует каталог meg128 и возвращает границы топографических тайлов (megt*.lbl).</summary>
+    public static IReadOnlyList<Meg128TileBounds> LoadMeg128Catalog(string directory)
+    {
+        var reader = new MolaDataReader();
+        var tiles = new List<Meg128TileBounds>();
+
+        foreach (var lbl in Directory.EnumerateFiles(directory, "megt*.lbl").OrderBy(Path.GetFileName))
+        {
+            try
+            {
+                tiles.Add(reader.ReadTileBounds(lbl));
+            }
+            catch (Exception ex)
+            {
+                Trace.WriteLine($"Skip {lbl}: {ex.Message}");
+            }
+        }
+
+        return tiles;
     }
 
     /// <summary>
@@ -65,5 +108,18 @@ public class MolaDataReader
         }
 
         return data;
+    }
+
+    /// <summary>Загружает топографический тайл MEG128: .lbl + соответствующий .img.</summary>
+    public MapData LoadTopographyTile(string meg128Directory, string tileBaseName, int step)
+    {
+        var lblPath = Path.Combine(meg128Directory, tileBaseName + ".lbl");
+        var imgPath = Path.Combine(meg128Directory, tileBaseName + ".img");
+
+        if (!File.Exists(imgPath))
+            throw new FileNotFoundException("Topography IMG not found.", imgPath);
+
+        var parameters = ReadLblFile(lblPath);
+        return ReadImgFile(imgPath, parameters, step);
     }
 }

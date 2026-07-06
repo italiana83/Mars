@@ -21,9 +21,10 @@ namespace Mars
     /// <summary>
     /// OpenGL shader program: компиляция vertex/fragment stages и установка uniform-переменных.
     /// </summary>
-    public class Shader
+    public class Shader : IDisposable
     {
-        private readonly int _handle;
+        private int _handle;
+        private bool _disposed;
 
         /// <summary>
         /// Компилирует и связывает шейдеры; при <see cref="ShaderSourceMode.File"/> читает исходники с диска.
@@ -178,10 +179,16 @@ namespace Mars
             return location;
         }
 
-        /// <summary>Освобождает GPU-ресурс shader program при сборке мусора.</summary>
-        ~Shader()
+        /// <summary>Удаляет shader program; вызывать только из потока с активным OpenGL-контекстом.</summary>
+        public void Dispose()
         {
+            if (_disposed || _handle == 0)
+                return;
+
             GL.DeleteProgram(_handle);
+            _handle = 0;
+            _disposed = true;
+            GC.SuppressFinalize(this);
         }
     }
 }

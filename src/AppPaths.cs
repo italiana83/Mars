@@ -13,6 +13,9 @@ public static class AppPaths
     public static string DataPath(params string[] parts) =>
         Path.Combine(new[] { ProjectRoot, "data" }.Concat(parts).ToArray());
 
+    /// <summary>Каталог с тайлами MOLA MEG128 (.lbl / .img).</summary>
+    public static string Meg128Directory => DataPath("mola", "meg128");
+
     /// <summary>
     /// Ищет файл мини-карты топографии Mars_topography_* в data;
     /// возвращает null, если подходящий файл не найден.

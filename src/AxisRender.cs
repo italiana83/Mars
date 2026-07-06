@@ -151,11 +151,22 @@ namespace Mars
             //GL.BindVertexArray(0);
         }
 
-        /// <summary>Удаляет VAO и VBO из OpenGL.</summary>
+        /// <summary>Удаляет VAO, VBO и shader program из OpenGL.</summary>
         public void Dispose()
         {
-            if (_vao != 0) GL.DeleteVertexArray(_vao);
-            if (_vbo != 0) GL.DeleteBuffer(_vbo);
+            if (_vao != 0)
+            {
+                GL.DeleteVertexArray(_vao);
+                _vao = 0;
+            }
+
+            if (_vbo != 0)
+            {
+                GL.DeleteBuffer(_vbo);
+                _vbo = 0;
+            }
+
+            _shader?.Dispose();
         }
 
         //void RenderAxisLabels()

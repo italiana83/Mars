@@ -58,6 +58,21 @@ namespace Mars
                     }
                 }
 
+                if (parameters.FlipHorizontal)
+                {
+                    using (var surface = SKSurface.Create(new SKImageInfo(currentBitmap.Width, currentBitmap.Height)))
+                    {
+                        var canvas = surface.Canvas;
+                        canvas.Translate(currentBitmap.Width, 0);
+                        canvas.Scale(-1, 1);
+                        canvas.DrawBitmap(currentBitmap, 0, 0);
+
+                        var flippedBitmap = SKBitmap.FromImage(surface.Snapshot());
+                        currentBitmap.Dispose();
+                        currentBitmap = flippedBitmap;
+                    }
+                }
+
                 if (parameters.Rotate180)
                 {
                     using (var surface = SKSurface.Create(new SKImageInfo(currentBitmap.Width, currentBitmap.Height)))
@@ -225,6 +240,21 @@ namespace Mars
                         canvas.DrawBitmap(currentBitmap, 0, 0);
 
                         // Replace the original bitmap with the flipped version
+                        var flippedBitmap = SKBitmap.FromImage(surface.Snapshot());
+                        currentBitmap.Dispose();
+                        currentBitmap = flippedBitmap;
+                    }
+                }
+
+                if (parameters.FlipHorizontal)
+                {
+                    using (var surface = SKSurface.Create(new SKImageInfo(currentBitmap.Width, currentBitmap.Height)))
+                    {
+                        var canvas = surface.Canvas;
+                        canvas.Translate(currentBitmap.Width, 0);
+                        canvas.Scale(-1, 1);
+                        canvas.DrawBitmap(currentBitmap, 0, 0);
+
                         var flippedBitmap = SKBitmap.FromImage(surface.Snapshot());
                         currentBitmap.Dispose();
                         currentBitmap = flippedBitmap;

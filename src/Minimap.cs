@@ -19,11 +19,18 @@ public sealed class Minimap : IDisposable
     private const float ImgMarginT = 10f;
     private const float ImgMarginR = 2f;
     private const float ImgMarginB = 2f;
+    /// <summary>
+    /// Отражение прямоугольников тайлов. Карта уже отражена через FlipImages + vUV.y = 1 - y в шейдере.
+    /// </summary>
+    private const bool MapMirrorVertical = false;
 
     private static readonly Vector4 CyanBorder = new(0.02f, 0.90f, 0.98f, 0.95f);
     private static readonly Vector4 CyanGlowOuter = new(0.02f, 0.90f, 0.98f, 0.10f);
     private static readonly Vector4 CyanGlowInner = new(0.02f, 0.90f, 0.98f, 0.22f);
     private static readonly Vector4 FillDark = new(0.04f, 0.06f, 0.07f, 0.40f);
+    private static readonly Vector4 TileFill = new(0.02f, 0.90f, 0.98f, 0.08f);
+    private static readonly Vector4 TileFillHover = new(0.05f, 0.95f, 1.00f, 0.28f);
+    private static readonly Vector4 TileGlowHover = new(0.02f, 0.90f, 0.98f, 0.35f);
 
     public bool IsVisible { get; set; }
 
@@ -40,6 +47,10 @@ public sealed class Minimap : IDisposable
     private Shader _textureShader;
     private Shader _colorShader;
     private Matrix4 _ortho;
+
+    private readonly IReadOnlyList<Meg128TileBounds> _tiles;
+    private int _hoveredTile = -1;
+    private int _selectedTile = -1;
 
     private readonly float[] _quadVertices =
     {
@@ -67,6 +78,7 @@ public sealed class Minimap : IDisposable
         _scaleY = scaleY;
 
         LoadTexture(imagePath);
+        _tiles = MolaDataReader.LoadMeg128Catalog(AppPaths.Meg128Directory);
         InitTexBuffers();
         InitPolyBuffers();
         InitShaders();
@@ -107,6 +119,57 @@ public sealed class Minimap : IDisposable
         GL.PolygonMode(MaterialFace.FrontAndBack, (PolygonMode)polygonMode[0]);
     }
 
+    /// <summary>Обновляет индекс тайла MEG128 под курсором для подсветки hover.</summary>
+    public void UpdateMouse(float mouseX, float mouseY)
+    {
+        _hoveredTile = FindTileAt(mouseX, mouseY);
+    }
+
+    /// <summary>Возвращает тайл MEG128 под указанными экранными координатами.</summary>
+    public bool TryPickTile(float mouseX, float mouseY, out Meg128TileBounds tile)
+    {
+        int index = FindTileAt(mouseX, mouseY);
+        if (index >= 0)
+        {
+            tile = _tiles[index];
+            return true;
+        }
+
+        tile = default;
+        return false;
+    }
+
+    /// <summary>Выделяет загруженный тайл на карте по имени (без расширения).</summary>
+    public void SetSelectedTile(string? tileName)
+    {
+        _selectedTile = -1;
+        if (tileName is null)
+            return;
+
+        for (int i = 0; i < _tiles.Count; i++)
+        {
+            if (string.Equals(_tiles[i].Name, tileName, StringComparison.OrdinalIgnoreCase))
+            {
+                _selectedTile = i;
+                break;
+            }
+        }
+    }
+
+    private int FindTileAt(float mouseX, float mouseY)
+    {
+        if (!IsVisible)
+            return -1;
+
+        for (int i = _tiles.Count - 1; i >= 0; i--)
+        {
+            if (GetTileScreenRect(_tiles[i]).Contains(mouseX, mouseY))
+                return i;
+        }
+
+        return -1;
+    }
+
     /// <summary>Возвращает true, если мини-карта видима и клик попал в область панели.</summary>
     public bool HandleMouseDown(float mouseX, float mouseY)
     {
@@ -130,13 +193,7 @@ public sealed class Minimap : IDisposable
 
         DrawSciFiPanel(pos, size, FillDark);
 
-        float l = UiScreen.MmToPixels(ImgMarginL, _scaleY);
-        float t = UiScreen.MmToPixels(ImgMarginT, _scaleY);
-        float r = UiScreen.MmToPixels(ImgMarginR, _scaleY);
-        float b = UiScreen.MmToPixels(ImgMarginB, _scaleY);
-
-        var imgPos = pos + new Vector2(l, t);
-        var imgSize = size - new Vector2(l + r, t + b);
+        var (imgPos, imgSize) = GetImageArea();
 
         _textureShader.Use();
         _textureShader.SetVector2("uPos", imgPos);
@@ -147,6 +204,63 @@ public sealed class Minimap : IDisposable
         GL.BindTexture(TextureTarget.Texture2D, _textureId);
         GL.BindVertexArray(_vaoTex);
         GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
+
+        RenderTileOverlays();
+    }
+
+    /// <summary>Рисует светящиеся прямоугольники границ тайлов MEG128 поверх карты.</summary>
+    private void RenderTileOverlays()
+    {
+        for (int i = 0; i < _tiles.Count; i++)
+            DrawTileRect(GetTileScreenRect(_tiles[i]), i == _hoveredTile || i == _selectedTile);
+    }
+
+    /// <summary>Переводит географические границы тайла в экранный прямоугольник (с тем же зеркалом, что и карта).</summary>
+    private RectangleF GetTileScreenRect(Meg128TileBounds tile)
+    {
+        var (imgPos, imgSize) = GetImageArea();
+        return MarsMapProjection.GeoToScreenRect(
+            tile.LatMin, tile.LatMax, tile.LonWest, tile.LonEast,
+            _imgW, _imgH, imgPos, imgSize, MapMirrorVertical);
+    }
+
+    /// <summary>Область отрисовки растровой карты внутри sci-fi панели (с отступами в мм UI).</summary>
+    private (Vector2 pos, Vector2 size) GetImageArea()
+    {
+        var panelSize = new Vector2(_screenW * 0.5f, _screenH * 0.5f);
+
+        float l = UiScreen.MmToPixels(ImgMarginL, _scaleY);
+        float t = UiScreen.MmToPixels(ImgMarginT, _scaleY);
+        float r = UiScreen.MmToPixels(ImgMarginR, _scaleY);
+        float b = UiScreen.MmToPixels(ImgMarginB, _scaleY);
+
+        return (_panelOrigin + new Vector2(l, t), panelSize - new Vector2(l + r, t + b));
+    }
+
+    /// <summary>Рисует один тайл: свечение, заливка и cyan-контур; ярче при hover.</summary>
+    private void DrawTileRect(RectangleF rect, bool hovered)
+    {
+        if (rect.Width < 1f || rect.Height < 1f)
+            return;
+
+        var poly = new List<Vector2>
+        {
+            new(rect.Left, rect.Top),
+            new(rect.Right, rect.Top),
+            new(rect.Right, rect.Bottom),
+            new(rect.Left, rect.Bottom),
+        };
+
+        var fill = hovered ? TileFillHover : TileFill;
+        var glowOuter = hovered ? TileGlowHover : CyanGlowOuter;
+        var glowInner = hovered ? TileGlowHover : CyanGlowInner;
+        var border = hovered ? new Vector4(0.4f, 1f, 1f, 1f) : CyanBorder;
+
+        var center = Centroid(poly);
+        DrawFilledPolygon(ScalePolygon(poly, center, 1.03f), glowOuter);
+        DrawFilledPolygon(ScalePolygon(poly, center, 1.012f), glowInner);
+        DrawFilledPolygon(poly, fill);
+        DrawPolygonOutline(poly, border, hovered ? 2f : 1.2f, rect.Top);
     }
 
     /// <summary>Строит chamfer-полигон панели, рисует свечение, заливку и cyan-контур.</summary>
@@ -299,14 +413,13 @@ public sealed class Minimap : IDisposable
     }
 
     /// <summary>
-    /// Загружает изображение через <see cref="ImageGDI.LoadFromDisk"/> (поворот 180°, без flip)
-    /// и сохраняет OpenGL handle текстуры в <see cref="_textureId"/>.
+    /// Загружает изображение как в файле (север вверху); FlipImages — только для OpenGL.
     /// </summary>
     private void LoadTexture(string path)
     {
         ImageGDI.LoadFromDisk(
             path,
-            new TextureLoaderParameters { FlipImages = false, Rotate180 = true },
+            new TextureLoaderParameters { FlipImages = true, FlipHorizontal = false, Rotate180 = false },
             out uint handle,
             out _,
             out _imgW,
@@ -404,7 +517,7 @@ out vec2 vUV;
 void main() {
     vec2 p = aPos * uSize + uPos;
     gl_Position = uOrtho * vec4(p, 0, 1);
-    vUV = aUV;
+    vUV = vec2(aUV.x, 1.0 - aUV.y);
 }";
 
     private const string FragmentTex = @"

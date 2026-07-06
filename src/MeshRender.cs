@@ -61,6 +61,7 @@ public class MeshRender : IDisposable
     /// <summary>VAO/VBO с полным набором вершин heightmap для привязки атрибутов position + height.</summary>
     private int _vao;
     private int _vbo;
+    private bool _disposed;
 
     /// <summary>Геометрический центр модели (середина AABB). Используется для осей координат и навигации камеры.</summary>
     public Vector3 ModelCenter { get; private set; }
@@ -369,6 +370,9 @@ public class MeshRender : IDisposable
     /// </summary>
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
         foreach (var chunk in _chunkManager.Chunks)
         {
             if (chunk.ElementBuffer != 0)
@@ -379,5 +383,11 @@ public class MeshRender : IDisposable
             GL.DeleteVertexArray(_vao);
         if (_vbo != 0)
             GL.DeleteBuffer(_vbo);
+
+        _shader.Dispose();
+
+        _vao = 0;
+        _vbo = 0;
+        _disposed = true;
     }
 }

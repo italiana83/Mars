@@ -22,6 +22,9 @@ namespace Mars
         /// <summary>false==DirectX TexCoords, true==OpenGL TexCoords (Default: true)</summary>
         public bool FlipImages { get; set; } = true;
 
+        /// <summary>Зеркально отразить изображение по горизонтали (Default: false)</summary>
+        public bool FlipHorizontal { get; set; } = false;
+
         /// <summary>Rotate image 180 degrees after loading (Default: false)</summary>
         public bool Rotate180 { get; set; } = false;
 
