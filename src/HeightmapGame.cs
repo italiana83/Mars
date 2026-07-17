@@ -14,6 +14,7 @@ public class HeightmapGame : GameWindow
 {
     private const int DefaultHeightmapStep = 8;
     private const string DefaultTileName = "megt00n000hb";
+    private const float DefaultMoveSpeed = 50f;
 
     private MapData mapData;
     private string _currentTileName = DefaultTileName;
@@ -23,9 +24,12 @@ public class HeightmapGame : GameWindow
     MeshRender meshRender;
     Matrix4 projection;
 
-    Camera cam = new(10.2f, 0.02f);
-    private bool mouseDown = false;
-    Vector2 lastMousePos = new();
+    private const float MaxMovementDelta = 1f / 60f;
+    private const float WheelStepDistance = 15f;
+
+    Camera cam = new(DefaultMoveSpeed, 0.003f);
+    private bool _cameraLookActive;
+    private Vector2 _lastMousePos;
     private Frustum frustum = new();
 
     private int _frameCount;
@@ -45,7 +49,7 @@ public class HeightmapGame : GameWindow
             new GameWindowSettings { UpdateFrequency = 60.0 },
             new NativeWindowSettings
             {
-                IsEventDriven = true,
+                IsEventDriven = false,
                 APIVersion = new Version(3, 3),
                 Profile = ContextProfile.Core,
                 NumberOfSamples = 0,
@@ -119,7 +123,9 @@ public class HeightmapGame : GameWindow
         minimap = new Minimap(minimapImage, uiScreen.FramebufferWidth, uiScreen.FramebufferHeight, uiScreen.ScaleY);
         settingsPanel = new SciFiPanelOverlay(uiScreen);
         settingsPanel.SetHeightmapStep(DefaultHeightmapStep);
+        settingsPanel.SetMoveSpeed(cam.MoveSpeed);
         settingsPanel.OnHeightmapStepChanged = _ => ReloadCurrentTopographyTile();
+        settingsPanel.OnMoveSpeedChanged = speed => cam.MoveSpeed = speed;
         sidebarMenu = new SidebarMenu(uiScreen);
 
         GL.ClearColor(0.1f, 0.2f, 0.3f, 1.0f);
@@ -139,49 +145,53 @@ public class HeightmapGame : GameWindow
     }
 
     /// <summary>
-    /// Обрабатывает нажатие левой кнопки: передаёт событие UI (sidebar, minimap, settings) или начинает захват мыши для камеры.
+    /// Обрабатывает клики UI; ЛКМ вне UI включает поворот камеры (FPS).
     /// </summary>
     protected override void OnMouseDown(MouseButtonEventArgs e)
     {
         base.OnMouseDown(e);
 
-        if (e.Button == MouseButton.Left)
+        if (e.Button != MouseButton.Left)
+            return;
+
+        var mouse = uiScreen.ClientToFramebuffer(MouseState.X, MouseState.Y);
+        if (sidebarMenu.HandleMouseDown(mouse.X, mouse.Y))
+            return;
+
+        minimap.IsVisible = sidebarMenu.IsMinimapVisible;
+        if (minimap.IsVisible && minimap.HandleMouseDown(mouse.X, mouse.Y))
         {
-            var mouse = uiScreen.ClientToFramebuffer(MouseState.X, MouseState.Y);
-            if (sidebarMenu.HandleMouseDown(mouse.X, mouse.Y))
-                return;
-
-            minimap.IsVisible = sidebarMenu.IsMinimapVisible;
-            if (minimap.IsVisible && minimap.HandleMouseDown(mouse.X, mouse.Y))
-            {
-                if (minimap.TryPickTile(mouse.X, mouse.Y, out var tile))
-                    ReloadTopographyTile(tile);
-                return;
-            }
-
-            settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
-            if (settingsPanel.IsVisible && settingsPanel.HandleMouseDown(mouse.X, mouse.Y))
-            {
-                ApplyMeshHeightFromSettings();
-                return;
-            }
+            if (minimap.TryPickTile(mouse.X, mouse.Y, out var tile))
+                ReloadTopographyTile(tile);
+            return;
         }
 
-        mouseDown = true;
-        lastMousePos = new Vector2(MouseState.X, MouseState.Y);
+        settingsPanel.IsVisible = sidebarMenu.IsSettingsVisible;
+        if (settingsPanel.IsVisible && settingsPanel.HandleMouseDown(mouse.X, mouse.Y))
+        {
+            ApplyMeshHeightFromSettings();
+            return;
+        }
+
+        _cameraLookActive = true;
+        _lastMousePos = new Vector2(MouseState.X, MouseState.Y);
     }
 
     /// <summary>
-    /// Сбрасывает флаг захвата мыши при отпускании кнопки.
+    /// Отключает поворот камеры и возвращает курсор при отпускании ЛКМ.
     /// </summary>
     protected override void OnMouseUp(MouseButtonEventArgs e)
     {
         base.OnMouseUp(e);
-        mouseDown = false;
+
+        if (e.Button != MouseButton.Left)
+            return;
+
+        _cameraLookActive = false;
     }
 
     /// <summary>
-    /// Вращает камеру левой кнопкой, перемещает по Z правой; обновляет hover-состояние sidebar.
+    /// Поворачивает камеру при зажатой ЛКМ; обновляет hover-состояние UI.
     /// </summary>
     protected override void OnMouseMove(MouseMoveEventArgs e)
     {
@@ -197,46 +207,44 @@ public class HeightmapGame : GameWindow
         if (settingsPanel.IsVisible)
             settingsPanel.UpdateMouse(mouse.X, mouse.Y);
 
-        if (!mouseDown)
+        if (!_cameraLookActive || !MouseState.IsButtonDown(MouseButton.Left))
             return;
 
-        if (MouseState.IsButtonDown(MouseButton.Left))
-        {
-            Vector2 delta = lastMousePos - new Vector2(e.X, e.Y);
-            cam.AddRotation(delta.X / 10, delta.Y / 10);
-            lastMousePos = new Vector2(e.X, e.Y);
-        }
+        var current = new Vector2(MouseState.X, MouseState.Y);
+        var delta = current - _lastMousePos;
+        _lastMousePos = current;
 
-        if (MouseState.IsButtonDown(MouseButton.Right))
-        {
-            if (e.Y > lastMousePos.Y)
-                cam.Move(0f, 0f, 0.1f);
-            else
-                cam.Move(0f, 0f, -0.1f);
-
-            lastMousePos = new Vector2(e.X, e.Y);
-        }
+        if (delta != Vector2.Zero)
+            cam.AddRotation(delta.X, delta.Y);
     }
 
     /// <summary>
-    /// Приближает или отдаляет камеру по оси Y в зависимости от направления прокрутки колёсика.
+    /// Приближает или отдаляет камеру вдоль направления взгляда.
     /// </summary>
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
+        float distance = WheelStepDistance * (cam.MoveSpeed / DefaultMoveSpeed);
+        cam.MoveForwardStep(MathF.Sign(e.OffsetY), distance);
+    }
 
-        if (e.OffsetY > 0)
-            cam.Move(0f, 10000.0f, 0f);
-        else if (e.OffsetY < 0)
-            cam.Move(0f, -10000.0f, 0f);
+    /// <summary>Сворачивает меню и его панели при нажатии Esc.</summary>
+    protected override void OnKeyDown(KeyboardKeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        if (e.Key == Keys.Escape)
+            sidebarMenu?.Collapse();
     }
 
     /// <summary>
-    /// Обновляет счётчик кадров и раз в секунду выводит FPS в заголовок окна.
+    /// Обрабатывает WASD, обновляет FPS в заголовке окна.
     /// </summary>
     protected override void OnUpdateFrame(FrameEventArgs args)
     {
         base.OnUpdateFrame(args);
+
+        ProcessKeyboardMovement((float)args.Time);
 
         _frameCount++;
         _elapsedTime += args.Time;
@@ -318,6 +326,25 @@ public class HeightmapGame : GameWindow
     {
         meshRender.SetHeightScale(settingsPanel.MeshHeightScale);
         boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
+    }
+
+    private void ProcessKeyboardMovement(float deltaTime)
+    {
+        deltaTime = Math.Min(deltaTime, MaxMovementDelta);
+
+        cam.MoveSpeed = settingsPanel.MoveSpeed;
+
+        var kb = KeyboardState;
+
+        float forward = 0f;
+        float right = 0f;
+
+        if (kb.IsKeyDown(Keys.W)) forward += 1f;
+        if (kb.IsKeyDown(Keys.S)) forward -= 1f;
+        if (kb.IsKeyDown(Keys.D)) right += 1f;
+        if (kb.IsKeyDown(Keys.A)) right -= 1f;
+
+        cam.MoveRelative(forward, right, deltaTime);
     }
 
     /// <summary>

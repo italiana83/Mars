@@ -1,93 +1,110 @@
 ﻿using OpenTK.Mathematics;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace Mars
+namespace Mars;
+
+/// <summary>
+/// Камера от первого лица: yaw/pitch, WASD по направлению взгляда в 3D.
+/// </summary>
+public class Camera
 {
-    /// <summary>
-    /// Камера от первого лица: позиция, ориентация по yaw/pitch и управление WASD + мышь.
-    /// </summary>
-    public class Camera
+    public Vector3 Position = Vector3.Zero;
+
+    /// <summary>Ориентация в радианах: X — yaw, Y — pitch.</summary>
+    public Vector3 Orientation = new((float)Math.PI, 0f, 0f);
+
+    public float MoveSpeed { get; set; }
+    public float MouseSensitivity { get; set; }
+
+    private const float MaxPitch = MathF.PI / 2f - 0.01f;
+    private const float MaxMouseDelta = 80f;
+
+    public Camera(float moveSpeed, float mouseSensitivity)
     {
-        /// <summary>
-        /// Текущая позиция камеры в 3D-пространстве.
-        /// </summary>
-        public Vector3 Position = Vector3.Zero;
-
-        /// <summary>
-        /// Ориентация камеры в радианах (углы поворота вокруг осей X и Y).
-        /// X: вращение вокруг вертикальной оси(горизонтальная ориентация).
-        /// Y: вращение вверх и вниз(вертикальная ориентация).
-        /// </summary>
-        public Vector3 Orientation = new Vector3((float)Math.PI, 0f, 0f);
-
-        /// <summary>
-        /// Скорость движения камеры.
-        /// </summary>
-        public float MoveSpeed { get; private set; } = 1.2f;
-
-        /// <summary>
-        /// Чувствительность камеры при повороте с помощью мыши.
-        /// </summary>
-        public float MouseSensitivity { get; private set; } = 0.002f;
-
-        /// <summary>Создаёт камеру с заданной скоростью перемещения и чувствительностью мыши.</summary>
-        public Camera(float moveSpeed, float mouseSensitivity)
-        {
-            MoveSpeed = moveSpeed;
-            MouseSensitivity = mouseSensitivity;
-        }
-
-        /// <summary>Строит матрицу вида LookAt из текущей позиции и углов ориентации.</summary>
-        public Matrix4 GetViewMatrix()
-        {
-            Vector3 lookat = new Vector3();
-
-            lookat.X = (float)(Math.Sin((float)Orientation.X) * Math.Cos((float)Orientation.Y));
-            lookat.Y = (float)Math.Sin((float)Orientation.Y);
-            lookat.Z = (float)(Math.Cos((float)Orientation.X) * Math.Cos((float)Orientation.Y));
-
-            return Matrix4.LookAt(Position, Position + lookat, Vector3.UnitY);
-        }
-
-        /// <summary>
-        /// Смещает камеру по локальным осям: x — вправо/влево, y — вперёд/назад, z — вверх/вниз.
-        /// </summary>
-        public void Move(float x, float y, float z)
-        {
-            Vector3 offset = new Vector3();
-
-            Vector3 forward = new Vector3((float)Math.Sin((float)Orientation.X), 0, (float)Math.Cos((float)Orientation.X));
-            Vector3 right = new Vector3(-forward.Z, 0, forward.X);
-
-            offset += x * right;
-            offset += y * forward;
-            offset.Y += z;
-
-            offset.NormalizeFast();
-            offset = Vector3.Multiply(offset, MoveSpeed);
-
-            Position += offset;
-        }
-
-        /// <summary>Добавляет поворот по горизонтали и вертикали с ограничением угла pitch.</summary>
-        public void AddRotation(float x, float y)
-        {
-            x = x * MouseSensitivity;
-            y = y * MouseSensitivity;
-
-            Orientation.X = (Orientation.X + x) % ((float)Math.PI * 2.0f);
-            Orientation.Y = Math.Max(Math.Min(Orientation.Y + y, (float)Math.PI / 2.0f - 0.1f), (float)-Math.PI / 2.0f + 0.1f);
-        }
-
-        /// <summary>Строковое представление позиции и ориентации для отладки.</summary>
-        public override string ToString()
-        {
-            return $"Position: {Position}       Orientation: {Orientation}";
-        }
+        MoveSpeed = moveSpeed;
+        MouseSensitivity = mouseSensitivity;
     }
 
+    public Matrix4 GetViewMatrix()
+    {
+        var forward = GetLookDirection().Normalized();
+        var up = PickUpVector(forward);
+        return Matrix4.LookAt(Position, Position + forward, up);
+    }
+
+    /// <summary>Up-вектор для LookAt без переворота при взгляде вверх/вниз.</summary>
+    private Vector3 PickUpVector(Vector3 forward)
+    {
+        if (MathF.Abs(forward.Y) < 0.99f)
+            return Vector3.UnitY;
+
+        // Вблизи полюса — опора на горизонтальное направление yaw.
+        return new Vector3(MathF.Sin(Orientation.X), 0f, MathF.Cos(Orientation.X)).Normalized();
+    }
+
+    public Vector3 GetLookDirection()
+    {
+        float yaw = Orientation.X;
+        float pitch = Orientation.Y;
+
+        return new Vector3(
+            MathF.Sin(yaw) * MathF.Cos(pitch),
+            MathF.Sin(pitch),
+            MathF.Cos(yaw) * MathF.Cos(pitch));
+    }
+
+    public Vector3 GetForward() => GetLookDirection().Normalized();
+
+    public Vector3 GetRight()
+    {
+        var look = GetForward();
+        var right = Vector3.Cross(Vector3.UnitY, look);
+
+        if (right.LengthSquared > float.Epsilon)
+            return right.Normalized();
+
+        return new Vector3(MathF.Cos(Orientation.X), 0f, -MathF.Sin(Orientation.X));
+    }
+
+    public void MoveRelative(float forward, float right, float deltaTime)
+    {
+        Vector3 move = Vector3.Zero;
+
+        if (forward != 0f)
+            move += GetForward() * forward;
+        if (right != 0f)
+            move += GetRight() * right;
+
+        if (move.LengthSquared <= float.Epsilon)
+            return;
+
+        if (forward != 0f && right != 0f)
+            move.Normalize();
+
+        Position += move * (MoveSpeed * deltaTime);
+    }
+
+    public void MoveForwardStep(float signedSteps, float stepDistance)
+    {
+        if (signedSteps == 0f)
+            return;
+
+        Position += GetForward() * (signedSteps * stepDistance);
+    }
+
+    public void AddRotation(float deltaX, float deltaY)
+    {
+        deltaX = Math.Clamp(deltaX, -MaxMouseDelta, MaxMouseDelta);
+        deltaY = Math.Clamp(deltaY, -MaxMouseDelta, MaxMouseDelta);
+
+        Orientation.X -= deltaX * MouseSensitivity;
+        Orientation.Y = Math.Clamp(
+            Orientation.Y - deltaY * MouseSensitivity,
+            -MaxPitch,
+            MaxPitch);
+
+        Orientation.X = MathF.IEEERemainder(Orientation.X, MathF.PI * 2f);
+    }
+
+    public override string ToString() =>
+        $"Position: {Position}       Orientation: {Orientation}";
 }

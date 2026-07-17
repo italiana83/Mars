@@ -14,7 +14,8 @@ public sealed class SciFiPanelOverlay : IDisposable
     private const int ToggleRowCount = 2;
     private const int HeightRowIndex = 2;
     private const int HeightmapStepRowIndex = 3;
-    private const int SettingsRowCount = 4;
+    private const int MoveSpeedRowIndex = 4;
+    private const int SettingsRowCount = 5;
 
     private const float PanelChamfer = 10f;
     private const float PanelOutlineWidth = 1.5f;
@@ -33,11 +34,15 @@ public sealed class SciFiPanelOverlay : IDisposable
     private const float HeightScaleMax = 10f;
     private const int HeightmapStepMin = 1;
     private const int HeightmapStepMax = 32;
+    private const float MoveSpeedMin = 5f;
+    private const float MoveSpeedMax = 200f;
+    private const float MoveSpeedStep = 5f;
 
     private const string FillLabel = "Заливка";
     private const string ChunksLabel = "Показывать чанки";
     private const string HeightLabel = "Высота";
     private const string HeightmapStepLabel = "Шаг выборки";
+    private const string MoveSpeedLabel = "Скорость";
     private const string BtnOn = "вкл";
     private const string BtnOff = "выкл";
 
@@ -65,8 +70,14 @@ public sealed class SciFiPanelOverlay : IDisposable
     /// <summary>Шаг прореживания при чтении .img (1 — все сэмплы, 8 — каждый 8-й).</summary>
     public int HeightmapStep { get; private set; } = 8;
 
+    /// <summary>Скорость перемещения камеры (WASD), единиц в секунду.</summary>
+    public float MoveSpeed { get; private set; } = 50f;
+
     /// <summary>Вызывается после изменения <see cref="HeightmapStep"/> — нужно перечитать .img.</summary>
     public Action<int>? OnHeightmapStepChanged;
+
+    /// <summary>Вызывается после изменения <see cref="MoveSpeed"/>.</summary>
+    public Action<float>? OnMoveSpeedChanged;
 
     private Vector2 _panelOrigin;
     private int _screenW, _screenH;
@@ -108,7 +119,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         _scaleY = screen.ScaleY;
 
         _text = new TextRenderer(TextRenderer.ResolveSystemFont(), _screenW, _screenH, 20f);
-        _text.EnsureGlyphs($"{FillLabel} {ChunksLabel} {HeightLabel} {HeightmapStepLabel} {BtnOn} {BtnOff} 0123456789.");
+        _text.EnsureGlyphs($"{FillLabel} {ChunksLabel} {HeightLabel} {HeightmapStepLabel} {MoveSpeedLabel} {BtnOn} {BtnOff} 0123456789.");
 
         InitPolyBuffers();
         InitShaders();
@@ -155,6 +166,10 @@ public sealed class SciFiPanelOverlay : IDisposable
             return;
 
         UpdateNumericRowHover(HeightmapStepRowIndex, mouseX, mouseY);
+        if (_hoveredNumericRow >= 0)
+            return;
+
+        UpdateNumericRowHover(MoveSpeedRowIndex, mouseX, mouseY);
     }
 
     private void UpdateNumericRowHover(int rowIndex, float mouseX, float mouseY)
@@ -240,6 +255,18 @@ public sealed class SciFiPanelOverlay : IDisposable
             return true;
         }
 
+        if (GetNumericDecreaseRect(MoveSpeedRowIndex).Contains(mouseX, mouseY))
+        {
+            AdjustMoveSpeed(-MoveSpeedStep);
+            return true;
+        }
+
+        if (GetNumericIncreaseRect(MoveSpeedRowIndex).Contains(mouseX, mouseY))
+        {
+            AdjustMoveSpeed(MoveSpeedStep);
+            return true;
+        }
+
         return GetPanelRect().Contains(mouseX, mouseY);
     }
 
@@ -249,6 +276,13 @@ public sealed class SciFiPanelOverlay : IDisposable
     /// <summary>Синхронизирует шаг выборки с фактически загруженным мешем.</summary>
     public void SetHeightmapStep(int step) =>
         HeightmapStep = Math.Clamp(step, HeightmapStepMin, HeightmapStepMax);
+
+    /// <summary>Задаёт скорость перемещения камеры.</summary>
+    public void SetMoveSpeed(float speed)
+    {
+        MoveSpeed = Math.Clamp(speed, MoveSpeedMin, MoveSpeedMax);
+        OnMoveSpeedChanged?.Invoke(MoveSpeed);
+    }
 
     private void AdjustMeshHeightScale(float delta)
     {
@@ -267,6 +301,8 @@ public sealed class SciFiPanelOverlay : IDisposable
         HeightmapStep = next;
         OnHeightmapStepChanged?.Invoke(HeightmapStep);
     }
+
+    private void AdjustMoveSpeed(float delta) => SetMoveSpeed(MoveSpeed + delta);
 
     private void SetRowEnabled(int rowIndex, bool enabled)
     {
@@ -294,6 +330,7 @@ public sealed class SciFiPanelOverlay : IDisposable
         1 => ChunksLabel,
         2 => HeightLabel,
         3 => HeightmapStepLabel,
+        4 => MoveSpeedLabel,
         _ => string.Empty,
     };
 
@@ -332,6 +369,12 @@ public sealed class SciFiPanelOverlay : IDisposable
             HeightmapStepLabel,
             HeightmapStep.ToString(),
             GetHeightmapStepValueWidth());
+
+        DrawNumericTriangleRow(
+            MoveSpeedRowIndex,
+            MoveSpeedLabel,
+            ((int)MoveSpeed).ToString(),
+            GetMoveSpeedValueWidth());
     }
 
     /// <summary>Строка настройки: метка слева, «выкл» / «вкл» справа.</summary>
@@ -390,10 +433,14 @@ public sealed class SciFiPanelOverlay : IDisposable
     private float GetHeightmapStepValueWidth() =>
         MathF.Max(_text.MeasureTextWidth(HeightmapStepMax.ToString()), _text.MeasureTextWidth("1")) + 4f;
 
+    private float GetMoveSpeedValueWidth() =>
+        MathF.Max(_text.MeasureTextWidth(((int)MoveSpeedMax).ToString()), _text.MeasureTextWidth("5")) + 4f;
+
     private float GetNumericValueWidth(int rowIndex) => rowIndex switch
     {
         HeightRowIndex => GetHeightValueWidth(),
         HeightmapStepRowIndex => GetHeightmapStepValueWidth(),
+        MoveSpeedRowIndex => GetMoveSpeedValueWidth(),
         _ => GetHeightValueWidth(),
     };
 

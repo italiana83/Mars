@@ -129,11 +129,7 @@ public sealed class SidebarMenu : IDisposable
         {
             IsExpanded = !IsExpanded;
             if (!IsExpanded)
-            {
-                _hoveredItem = -1;
-                IsMinimapVisible = false;
-                IsSettingsVisible = false;
-            }
+                Collapse();
             return true;
         }
 
@@ -162,6 +158,15 @@ public sealed class SidebarMenu : IDisposable
         }
 
         return GetPanelBounds().Contains(mouseX, mouseY);
+    }
+
+    /// <summary>Сворачивает меню и скрывает открытую миникарту или панель настроек.</summary>
+    public void Collapse()
+    {
+        IsExpanded = false;
+        _hoveredItem = -1;
+        IsMinimapVisible = false;
+        IsSettingsVisible = false;
     }
 
     /// <summary>
