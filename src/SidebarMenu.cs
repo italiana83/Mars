@@ -37,9 +37,6 @@ public sealed class SidebarMenu : IDisposable
     private static readonly Vector3 TextColor = new(0.94f, 0.95f, 0.93f);
     private static readonly Vector3 TextSelectedColor = new(0.98f, 1f, 1f);
 
-    private const string HeaderTitle = "Меню";
-    private static readonly string[] MenuItems = { "Мини карта", "Настройки" };
-
     private readonly TextRenderer _text;
     private int _screenW, _screenH;
     private int _vaoPoly;
@@ -52,6 +49,7 @@ public sealed class SidebarMenu : IDisposable
     private readonly float _headerTextHeight;
 
     private float HeaderHeight => _headerTextHeight + HeaderTextPadding * 2f;
+    private static int MenuItemCount => 2;
 
     public bool IsExpanded { get; private set; }
     public bool IsMinimapVisible { get; private set; }
@@ -64,7 +62,7 @@ public sealed class SidebarMenu : IDisposable
         {
             float h = HeaderHeight;
             if (IsExpanded)
-                h += BlockGap + HeaderToItemsExtraGap + MenuItems.Length * ItemHeight + (MenuItems.Length - 1) * BlockGap;
+                h += BlockGap + HeaderToItemsExtraGap + MenuItemCount * ItemHeight + (MenuItemCount - 1) * BlockGap;
             return MenuTop + h;
         }
     }
@@ -82,8 +80,8 @@ public sealed class SidebarMenu : IDisposable
         _itemInsetPx = UiScreen.MmToPixels(3f, _scaleY);
 
         _text = new TextRenderer(TextRenderer.ResolveSystemFont(), _screenW, _screenH, 24f);
-        _headerTextHeight = _text.MeasureTextHeight(HeaderTitle);
-        _text.EnsureGlyphs(HeaderTitle + " " + string.Join(' ', MenuItems));
+        _headerTextHeight = _text.MeasureTextHeight(Localization.Menu);
+        _text.EnsureGlyphs($"{Localization.Menu} {Localization.Minimap} {Localization.Settings}");
 
         InitGl();
         UpdateOrtho();
@@ -108,7 +106,7 @@ public sealed class SidebarMenu : IDisposable
         if (!IsExpanded)
             return;
 
-        for (int i = 0; i < MenuItems.Length; i++)
+        for (int i = 0; i < MenuItemCount; i++)
         {
             if (GetItemRect(i).Contains(mouseX, mouseY))
             {
@@ -136,7 +134,7 @@ public sealed class SidebarMenu : IDisposable
         if (!IsExpanded)
             return false;
 
-        for (int i = 0; i < MenuItems.Length; i++)
+        for (int i = 0; i < MenuItemCount; i++)
         {
             if (!GetItemRect(i).Contains(mouseX, mouseY))
                 continue;
@@ -186,7 +184,7 @@ public sealed class SidebarMenu : IDisposable
         DrawHeaderPanel();
         if (IsExpanded)
         {
-            for (int i = 0; i < MenuItems.Length; i++)
+            for (int i = 0; i < MenuItemCount; i++)
                 DrawItemPanel(i);
         }
 
@@ -210,7 +208,7 @@ public sealed class SidebarMenu : IDisposable
             FillDark,
             drawGlow: false);
 
-        _text.RenderTextFromTop(HeaderTitle, pos.X + 16f, pos.Y + HeaderTextPadding, 1f, TextColor);
+        _text.RenderTextFromTop(Localization.Menu, pos.X + 16f, pos.Y + HeaderTextPadding, 1f, TextColor);
     }
 
     /// <summary>Рисует один пункт меню с заливкой selected/hover/default и текстовой подписью.</summary>
@@ -227,7 +225,7 @@ public sealed class SidebarMenu : IDisposable
         DrawSciFiPanel(pos, size, fill);
 
         var textColor = selected ? TextSelectedColor : TextColor;
-        _text.RenderText(MenuItems[index], pos.X + 16f, TextY(pos.Y, size.Y), 1f, textColor);
+        _text.RenderText(GetMenuItemLabel(index), pos.X + 16f, TextY(pos.Y, size.Y), 1f, textColor);
     }
 
     /// <summary>
@@ -391,7 +389,7 @@ public sealed class SidebarMenu : IDisposable
         if (!IsExpanded)
             return bounds;
 
-        for (int i = 0; i < MenuItems.Length; i++)
+        for (int i = 0; i < MenuItemCount; i++)
             bounds = RectangleF.Union(bounds, GetItemRect(i));
         return bounds;
     }
@@ -412,6 +410,13 @@ public sealed class SidebarMenu : IDisposable
         float y = ItemsStartY() + index * (ItemHeight + BlockGap);
         return new RectangleF(Margin + ItemInset, y, Width - ItemInset, ItemHeight);
     }
+
+    private static string GetMenuItemLabel(int index) => index switch
+    {
+        0 => Localization.Minimap,
+        1 => Localization.Settings,
+        _ => string.Empty
+    };
 
     /// <summary>Создаёт VAO/VBO для полигонов, color shader, UBO ортографии и привязку uniform block.</summary>
     private void InitGl()

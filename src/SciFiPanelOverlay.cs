@@ -11,11 +11,12 @@ namespace Mars;
 /// </summary>
 public sealed class SciFiPanelOverlay : IDisposable
 {
-    private const int ToggleRowCount = 2;
-    private const int HeightRowIndex = 2;
-    private const int HeightmapStepRowIndex = 3;
-    private const int MoveSpeedRowIndex = 4;
-    private const int SettingsRowCount = 5;
+    private const int ToggleRowCount = 3;
+    private const int LanguageRowIndex = 2;
+    private const int HeightRowIndex = 3;
+    private const int HeightmapStepRowIndex = 4;
+    private const int MoveSpeedRowIndex = 5;
+    private const int SettingsRowCount = 6;
 
     private const float PanelChamfer = 10f;
     private const float PanelOutlineWidth = 1.5f;
@@ -37,14 +38,6 @@ public sealed class SciFiPanelOverlay : IDisposable
     private const float MoveSpeedMin = 5f;
     private const float MoveSpeedMax = 200f;
     private const float MoveSpeedStep = 5f;
-
-    private const string FillLabel = "Заливка";
-    private const string ChunksLabel = "Показывать чанки";
-    private const string HeightLabel = "Высота";
-    private const string HeightmapStepLabel = "Шаг выборки";
-    private const string MoveSpeedLabel = "Скорость";
-    private const string BtnOn = "вкл";
-    private const string BtnOff = "выкл";
 
     private static readonly Vector4 CyanBorder = new(0.02f, 0.90f, 0.98f, 0.95f);
     private static readonly Vector4 RowFill = new(99f / 255f, 104f / 255f, 110f / 255f, 1f);
@@ -119,7 +112,9 @@ public sealed class SciFiPanelOverlay : IDisposable
         _scaleY = screen.ScaleY;
 
         _text = new TextRenderer(TextRenderer.ResolveSystemFont(), _screenW, _screenH, 20f);
-        _text.EnsureGlyphs($"{FillLabel} {ChunksLabel} {HeightLabel} {HeightmapStepLabel} {MoveSpeedLabel} {BtnOn} {BtnOff} 0123456789.");
+        _text.EnsureGlyphs(
+            $"{Localization.Fill} {Localization.ShowChunks} {Localization.Language} {Localization.Russian} {Localization.English} " +
+            $"{Localization.Height} {Localization.SamplingStep} {Localization.Speed} {Localization.Off} {Localization.On} 0123456789.");
 
         InitPolyBuffers();
         InitShaders();
@@ -314,6 +309,9 @@ public sealed class SciFiPanelOverlay : IDisposable
             case 1:
                 IsShowChunksEnabled = enabled;
                 break;
+            case LanguageRowIndex:
+                Localization.SetLanguage(enabled ? UiLanguage.English : UiLanguage.Russian);
+                break;
         }
     }
 
@@ -321,16 +319,18 @@ public sealed class SciFiPanelOverlay : IDisposable
     {
         0 => IsFillEnabled,
         1 => IsShowChunksEnabled,
+        LanguageRowIndex => Localization.CurrentLanguage == UiLanguage.English,
         _ => false,
     };
 
     private static string GetRowLabel(int rowIndex) => rowIndex switch
     {
-        0 => FillLabel,
-        1 => ChunksLabel,
-        2 => HeightLabel,
-        3 => HeightmapStepLabel,
-        4 => MoveSpeedLabel,
+        0 => Localization.Fill,
+        1 => Localization.ShowChunks,
+        LanguageRowIndex => Localization.Language,
+        HeightRowIndex => Localization.Height,
+        HeightmapStepRowIndex => Localization.SamplingStep,
+        MoveSpeedRowIndex => Localization.Speed,
         _ => string.Empty,
     };
 
@@ -360,19 +360,19 @@ public sealed class SciFiPanelOverlay : IDisposable
 
         DrawNumericTriangleRow(
             HeightRowIndex,
-            HeightLabel,
+            Localization.Height,
             FormatHeightScale(MeshHeightScale),
             GetHeightValueWidth());
 
         DrawNumericTriangleRow(
             HeightmapStepRowIndex,
-            HeightmapStepLabel,
+            Localization.SamplingStep,
             HeightmapStep.ToString(),
             GetHeightmapStepValueWidth());
 
         DrawNumericTriangleRow(
             MoveSpeedRowIndex,
-            MoveSpeedLabel,
+            Localization.Speed,
             ((int)MoveSpeed).ToString(),
             GetMoveSpeedValueWidth());
     }
@@ -392,9 +392,15 @@ public sealed class SciFiPanelOverlay : IDisposable
             TextColor);
 
         bool isOn = IsRowEnabled(rowIndex);
-        DrawToggleButton(GetOffButtonRect(rowIndex), BtnOff, active: !isOn, buttonIndex: rowIndex * 2);
-        DrawToggleButton(GetOnButtonRect(rowIndex), BtnOn, active: isOn, buttonIndex: rowIndex * 2 + 1);
+        DrawToggleButton(GetOffButtonRect(rowIndex), GetOffButtonLabel(rowIndex), active: !isOn, buttonIndex: rowIndex * 2);
+        DrawToggleButton(GetOnButtonRect(rowIndex), GetOnButtonLabel(rowIndex), active: isOn, buttonIndex: rowIndex * 2 + 1);
     }
+
+    private static string GetOffButtonLabel(int rowIndex) =>
+        rowIndex == LanguageRowIndex ? Localization.Russian : Localization.Off;
+
+    private static string GetOnButtonLabel(int rowIndex) =>
+        rowIndex == LanguageRowIndex ? Localization.English : Localization.On;
 
     /// <summary>Строка с треугольниками ◀ ▶ и числовым значением между ними.</summary>
     private void DrawNumericTriangleRow(int rowIndex, string label, string valueText, float valueWidth)

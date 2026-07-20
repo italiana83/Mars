@@ -39,6 +39,7 @@ public class HeightmapGame : GameWindow
     Minimap minimap;
     SciFiPanelOverlay settingsPanel;
     SidebarMenu sidebarMenu;
+    ControlsHintOverlay controlsHint;
     UiScreen uiScreen;
 
     /// <summary>
@@ -87,15 +88,15 @@ public class HeightmapGame : GameWindow
             settingsPanel.ResetMeshHeightScale(1f);
             meshRender.SetHeightScale(1f);
             boundingBoxRenderer.CreateBoundingBox(meshRender.Min, meshRender.Max);
-            Title = $"Mars MOLA Viewer - {_currentTileName.ToUpperInvariant()}";
+            Title = Localization.TileTitle(_currentTileName);
         }
         catch (FileNotFoundException)
         {
-            Title = $"Mars MOLA Viewer - {_currentTileName}.img not found";
+            Title = Localization.TileNotFoundTitle(_currentTileName);
         }
         catch (Exception ex)
         {
-            Title = $"Mars MOLA Viewer - load failed: {_currentTileName}";
+            Title = Localization.TileLoadFailedTitle(_currentTileName);
             Trace.WriteLine($"Failed to load tile {_currentTileName}: {ex}");
         }
     }
@@ -117,7 +118,7 @@ public class HeightmapGame : GameWindow
 
         var minimapImage = AppPaths.FindMinimapImage()
             ?? throw new FileNotFoundException(
-                "Minimap image not found. Place Mars_topography_(MOLA_dataset)_HiRes.png (or .jpg) in the data/ folder.",
+                Localization.MinimapImageNotFound,
                 AppPaths.DataPath("Mars_topography_(MOLA_dataset)_HiRes.png"));
 
         minimap = new Minimap(minimapImage, uiScreen.FramebufferWidth, uiScreen.FramebufferHeight, uiScreen.ScaleY);
@@ -126,7 +127,9 @@ public class HeightmapGame : GameWindow
         settingsPanel.SetMoveSpeed(cam.MoveSpeed);
         settingsPanel.OnHeightmapStepChanged = _ => ReloadCurrentTopographyTile();
         settingsPanel.OnMoveSpeedChanged = speed => cam.MoveSpeed = speed;
+        Localization.LanguageChanged += () => Title = Localization.FpsTitle(_fps);
         sidebarMenu = new SidebarMenu(uiScreen);
+        controlsHint = new ControlsHintOverlay(uiScreen);
 
         GL.ClearColor(0.1f, 0.2f, 0.3f, 1.0f);
         GL.Enable(EnableCap.DepthTest);
@@ -254,7 +257,7 @@ public class HeightmapGame : GameWindow
             _fps = _frameCount / _elapsedTime;
             _frameCount = 0;
             _elapsedTime = 0.0;
-            Title = $"Mars MOLA Viewer - FPS: {_fps:F2}";
+            Title = Localization.FpsTitle(_fps);
         }
     }
 
@@ -294,6 +297,7 @@ public class HeightmapGame : GameWindow
         settingsPanel.Render();
 
         sidebarMenu.Render();
+        controlsHint.Render();
 
         SwapBuffers();
     }
@@ -311,6 +315,7 @@ public class HeightmapGame : GameWindow
         minimap?.UpdateScreenSize(fbW, fbH, uiScreen.ScaleY);
         settingsPanel?.UpdateScreenSize(uiScreen);
         sidebarMenu?.UpdateScreenSize(uiScreen);
+        controlsHint?.UpdateScreenSize(uiScreen);
 
         if (uiScreen.ClientWidth <= 0 || uiScreen.ClientHeight <= 0)
             return;
@@ -343,6 +348,9 @@ public class HeightmapGame : GameWindow
         if (kb.IsKeyDown(Keys.S)) forward -= 1f;
         if (kb.IsKeyDown(Keys.D)) right += 1f;
         if (kb.IsKeyDown(Keys.A)) right -= 1f;
+
+        if (forward != 0f || right != 0f)
+            controlsHint.Hide();
 
         cam.MoveRelative(forward, right, deltaTime);
     }
