@@ -1,6 +1,83 @@
 # Mars MOLA Viewer
 
-Интерактивный 3D-просмотрщик топографии Марса на основе данных спутника **MGS MOLA** (Mars Orbiter Laser Altimeter), формат **MEGDR** (128 px/°).
+Interactive 3D viewer of Martian topography based on **MGS MOLA** (Mars Orbiter Laser Altimeter) data in the **MEGDR** format (128 px/°).
+
+---
+
+## English
+
+### About
+
+**Mars MOLA Viewer** is a **C# / .NET 8** desktop application built with **OpenTK 4**. It reconstructs Martian terrain in 3D from PDS MEGDR tiles (`.lbl` metadata + `.img` elevation grids), applies MOLA-style height coloring, and lets you browse the planet through an interactive global minimap.
+
+MEGDR data archive:  
+https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
+
+### Features
+
+- Load **MEG128** topography tiles (`megt*.lbl` / `megt*.img`)
+- Triangulated heightmap mesh with **chunk-based frustum culling**
+- Height-based color ramp in GLSL
+- **Global minimap** with click-to-load tile selection
+- Sidebar UI: minimap toggle and settings panel
+- Settings: interface language, **sampling step** (1–32), **vertical mesh scale**, and movement speed
+- Coordinate axes, scene bounding box, FPS counter
+
+### Requirements
+
+- [.NET 8 SDK](https://dotnet.microsoft.com/download)
+- OpenGL 3.3 Core capable GPU/driver
+- Local MOLA dataset (not bundled with the repo)
+
+### Data setup
+
+Create a local `data/` folder (gitignored):
+
+```
+data/
+├── Mars_topography_(MOLA_dataset)_HiRes.png   # minimap image (.jpg also works)
+└── mola/
+    └── meg128/
+        ├── megt00n000hb.lbl
+        ├── megt00n000hb.img
+        └── …                                   # additional MEG128 tiles
+```
+
+The app searches for `Mars_topography_*` images under `data/`. Download MEG128 tiles from the PDS Geosciences Node (MEGDR collection).
+
+### Build and run
+
+From the repository root:
+
+```bash
+dotnet build Mars.sln
+dotnet run --project src/Mars.csproj
+```
+
+Debug configurations are available in `.vscode/` and `src/.vscode/`.
+
+### Controls
+
+| Action | Input |
+|--------|-------|
+| Move | W / A / S / D |
+| Rotate camera | LMB + drag |
+| Move along the view direction | Mouse wheel |
+| Close menu | Esc |
+| Open menu | Sidebar Menu |
+| Minimap | Minimap → click a tile region |
+| Settings | Settings → language, sampling step, height scale, movement speed |
+
+### Repository layout
+
+```
+Mars/
+├── Mars.sln              # solution (root)
+├── src/                  # C# OpenTK application
+├── data/                 # local datasets (not in git)
+└── Utils/
+    └── mars_mola_project/  # optional Python tooling (matplotlib)
+```
 
 ---
 
@@ -19,8 +96,8 @@ https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
 - Построение tri-mesh из heightmap с **frustum culling** по чанкам
 - Цветовая шкала высот (градиент MOLA) в fragment shader
 - **Мини-карта** глобальной топографии с выбором тайла кликом
-- Боковое меню: мини-карта, панель настроек
-- Настройки: **шаг выборки** (subsampling 1–32) и **масштаб высоты** меша
+- Боковое меню: мини-карта и панель настроек
+- Настройки: язык интерфейса, **шаг выборки** (1–32), **масштаб высоты** меша и скорость движения
 - Оси координат, ограничивающий параллелепипед (AABB), счётчик FPS
 
 ### Требования
@@ -63,12 +140,13 @@ dotnet run --project src/Mars.csproj
 
 | Действие | Управление |
 |----------|------------|
+| Перемещение | W / A / S / D |
 | Поворот камеры | ЛКМ + перетаскивание |
-| Сдвиг по оси Z | ПКМ + перетаскивание |
-| Приближение / отдаление | Колёсико мыши |
-| Меню | Боковая панель «Меню» |
-| Мини-карта | Пункт «Мини карта» → клик по региону |
-| Настройки | Пункт «Настройки» → шаг выборки, масштаб высоты |
+| Перемещение вдоль направления взгляда | Колёсико мыши |
+| Закрыть меню | Esc |
+| Открыть меню | Боковая панель «Меню» |
+| Мини-карта | «Мини-карта» → клик по региону |
+| Настройки | «Настройки» → язык, шаг выборки, масштаб высоты, скорость движения |
 
 ### Структура репозитория
 
@@ -84,82 +162,6 @@ Mars/
 ├── data/                 # локальные данные (не в git)
 └── Utils/
     └── mars_mola_project/  # вспомогательный Python-проект (matplotlib)
-```
-
----
-
-## English
-
-### About
-
-**Mars MOLA Viewer** is a **C# / .NET 8** desktop application built with **OpenTK 4**. It reconstructs Martian terrain in 3D from PDS MEGDR tiles (`.lbl` metadata + `.img` elevation grids), applies MOLA-style height coloring, and lets you browse the planet through an interactive global minimap.
-
-MEGDR data archive:  
-https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
-
-### Features
-
-- Load **MEG128** topography tiles (`megt*.lbl` / `megt*.img`)
-- Triangulated heightmap mesh with **chunk-based frustum culling**
-- Height-based color ramp in GLSL
-- **Global minimap** with click-to-load tile selection
-- Sidebar UI: minimap toggle, settings panel
-- Settings: **sampling step** (1–32) and **vertical mesh scale**
-- Coordinate axes, scene bounding box, FPS counter
-
-### Requirements
-
-- [.NET 8 SDK](https://dotnet.microsoft.com/download)
-- OpenGL 3.3 Core capable GPU/driver
-- Local MOLA dataset (not bundled with the repo)
-
-### Data setup
-
-Create a local `data/` folder (gitignored):
-
-```
-data/
-├── Mars_topography_(MOLA_dataset)_HiRes.png   # minimap image (.jpg also works)
-└── mola/
-    └── meg128/
-        ├── megt00n000hb.lbl
-        ├── megt00n000hb.img
-        └── …                                   # additional MEG128 tiles
-```
-
-The app searches for `Mars_topography_*` images under `data/`. Download MEG128 tiles from the PDS Geosciences Node (MEGDR collection).
-
-### Build and run
-
-From the repository root:
-
-```bash
-dotnet build Mars.sln
-dotnet run --project src/Mars.csproj
-```
-
-Debug configurations are available in `.vscode/` and `src/.vscode/`.
-
-### Controls
-
-| Action | Input |
-|--------|-------|
-| Rotate camera | LMB + drag |
-| Move along Z | RMB + drag |
-| Zoom | Mouse wheel |
-| Open menu | Sidebar «Меню» |
-| Minimap | «Мини карта» → click a tile region |
-| Settings | «Настройки» → sampling step, height scale |
-
-### Repository layout
-
-```
-Mars/
-├── Mars.sln              # solution (root)
-├── src/                  # C# OpenTK application
-├── data/                 # local datasets (not in git)
-└── Utils/
-    └── mars_mola_project/  # optional Python tooling (matplotlib)
 ```
 
 ---
