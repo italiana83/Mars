@@ -10,6 +10,14 @@ Interactive 3D viewer of Martian topography based on **MGS MOLA** (Mars Orbiter 
 
 **Mars MOLA Viewer** is a **C# / .NET 8** desktop application built with **OpenTK 4**. It reconstructs Martian terrain in 3D from PDS MEGDR tiles (`.lbl` metadata + `.img` elevation grids), applies MOLA-style height coloring, and lets you browse the planet through an interactive global minimap.
 
+### Screenshots
+
+![Filled terrain view](docs/images/mars-filled.png)
+*Filled terrain view with MOLA height coloring.*
+
+![Wireframe terrain view](docs/images/mars-wireframe.png)
+*Wireframe terrain view.*
+
 MEGDR data archive:  
 https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
 
@@ -86,6 +94,14 @@ Mars/
 ### О проекте
 
 Приложение на **C# / .NET 8** с **OpenTK 4** строит трёхмерную модель рельефа из бинарных тайлов PDS (`.lbl` + `.img`), раскрашивает поверхность по высоте в палитре MOLA и позволяет исследовать отдельные участки планеты через интерактивную мини-карту.
+
+### Скриншоты
+
+![Вид рельефа с заливкой](docs/images/mars-filled.png)
+*Вид рельефа с раскраской высот в палитре MOLA.*
+
+![Каркасный вид рельефа](docs/images/mars-wireframe.png)
+*Каркасный вид рельефа.*
 
 Данные MEGDR публикуются NASA PDS:  
 https://pds-geosciences.wustl.edu/missions/mgs/megdr.html
